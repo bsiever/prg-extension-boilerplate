@@ -29,7 +29,8 @@ const builtinExtensions = {
     gizmoRobot: () => require('../extensions/scratch3_gizmo'),
     microbitRobot: () => require('../extensions/scratch3_microbot'),
     teachableMachine: () => require('../extensions/scratch3_teachable_machine'),
-    textClassification: () => require('../extensions/scratch3_text_classification')
+    textClassification: () => require('../extensions/scratch3_text_classification'),
+    ozobotevoRobot: () => require('../extensions/scratch3_ozobot')
 };
 
 /**
