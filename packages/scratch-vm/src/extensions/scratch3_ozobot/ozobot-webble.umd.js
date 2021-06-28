@@ -1570,7 +1570,10 @@
         addDisconnectListener(callback) {
             this.device.addDisconnectListener(callback);
         }
-        /**
+        // BSIEVER: Added
+        removeDisconnectListener(callback) {
+            this.device.removeDisconnectListener(callback);
+        }        /**
          * General subscribe function which also starts notifications on the characteristics.
          */
         subscribe() {
@@ -2069,6 +2072,13 @@
                 return;
             }
             this.peripheral.addEventListener('gattserverdisconnected', callback);
+        }
+        // BSIEVER: Added
+        removeDisconnectListener(callback) {
+            if (this.peripheral === null) {
+                return;
+            }
+            this.peripheral.removeEventListener('gattserverdisconnected', callback);
         }
         getDeviceId() {
             return this.peripheral
