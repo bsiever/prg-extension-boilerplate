@@ -67,37 +67,41 @@ const blockIconURI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJYAAACWCAYA
 
 const EXTENSION_ID = 'ozobotEvoRobot';
 
-
-
-// TODO BSIEVER: TODO Ax:
-const _colors = ['red', 'green', 'blue', 'yellow', 'cyan', 'magenta', 'white', 'random'];
-const _colors_protocol = ['G#','J#','H#','K#','I#','L#','M#'];
-const _songs = ['happy','sad','sleeping','angry','up', 'down', 'victory'];
-const _songs_notes = [[64, 65, 67], // happy
-                      [69, 67, 65, 62, 60], // sad
-                      [60, 62, 64, 60, 60, 62, 64, 60], // sleeping
-                      [67, 67, 67, 64, 64, 65, 65, 65, 62], // angry
-                      [64, 65, 67, 69, 71, 72], // up
-                      [72, 71, 69, 67, 65, 64], //down
-                      [64, 67, 72]]; // victory
-const _notes_protocol = ['1#','B1#', '2#','B2#', '3#','4#','B3#', '5#','B4#', '6#','B5#', '7#','8#',];
-const MIN_PIEZO_NOTE = 60;
-const MAX_PIEZO_NOTE = 72;
-const _drive = ['forward', 'backward'];
-const _turn = ['left', 'right'];
-const _button = ['A','B','A or B','A and B','neither A nor B'];
-const _line_states = ['right side', 'left side', 'neither side', 'both sides'];
-
-
-
 const STATE_CONNECTED = 1;
 const STATE_DISCONNECTED = 2;
 
+class EvoData {
+    constructor(target, blocks) {
+        this.bot = null;
+        this.state = STATE_DISCONNECTED;
+        this.ozoblocks = blocks
+        this.target = target;  // Scratch target object for this Evo object
+        this.didDisconnectHandler = this.didDisconnect.bind(this);
+    }
+
+    // All the things to do when connected to Evo
+    setupOnConnection() {
+        // Prepare for disconnects
+        this.bot.addDisconnectListener(this.didDisconnectHandler);
+        // Change state 
+
+        this.state = STATE_CONNECTED;
+    }
+
+    didDisconnect() {
+        console.log('Evo Disconnect');
+        this.state = STATE_DISCONNECTED;
+        this.ozoblocks.updatePalette();
+        // TODO: May need to redraw menu.  Eh, just do it...
+    }
+}
+
 // Core, Team, and Official extension classes should be registered statically with the Extension Manager.
 // See: scratch-vm/src/extension-support/extension-manager.js
-class OzobotEvoRobot {  
+class OzobotEvoBlocks {  
 
     constructor (runtime) {
+        console.log("Constructing a OzobotEvoBlocks");
         /**
          * Store this for later communication with the Scratch VM runtime.
          * If this extension is running in a sandbox then `runtime` is an async proxy object.
@@ -115,39 +119,35 @@ class OzobotEvoRobot {
         this.bot = null;   // this.bot.sendCommandMove(this.bot.moveForwardBackward(150,200))
 
         this.spriteName = "none";
-        
-        // Member variables for device communication
-        this.robot = this;
-        this._mStatus = 1;
-        this._mDevice = null;
-        this._mServices = null;
-
-        // Member variables for device status/state
-        this.dist_read  = 0;
-        this.a_button = 0;
-        this.b_button = 0;
-        this.left_line = 0;
-        this.right_line = 0;
-        this.last_reading_time = 0;
-        
+                
         // Project / VM interaction stuff????  (Look into these)
-        this.runtime.on('PROJECT_STOP_ALL', this.resetRobot.bind(this));
-        // Events that may be of interest PROJECT_RUN_START, PROJECT_RUN_STOP, PERIPHERAL_....
-        // BLOCK_GLOW_OFF, BLOCK_GLOW_ON, targetWasCreated, targetWasRemoved 
-
         this.runtime.on('CONNECT_OZOBOTEVO', this.updateConnection.bind(this));
         this.runtime.on('PROJECT_CHANGED', this.projectChanged.bind(this));
         this.runtime.on('TOOLBOX_EXTENSIONS_NEED_UPDATE', this.targetChanged.bind(this));
 
+        // BSIEVER: Debugging to watch events
         allEvents.forEach(e => this.runtime.on(e, this.eventTrigger.bind(this, e)));
 
     }
 
+    /**
+     * TOOLBOX_EXTENSIONS_NEED_UPDATE Event: Something substantial has changed, like the selected target
+     * 
+     * Ensures that each target has an "EvoData" object
+     */
     targetChanged() {
         // Update the "bot" variable for this target
-
+        console.log(`Target changed: ${this.runtime._editingTarget.sprite.name}`)
+        // If the current object doesn't have an Evo, associate a new uninit one 
+        if ('evoData' in this.runtime._editingTarget == false) {
+            this.runtime._editingTarget.evoData = new EvoData(this.runtime._editingTarget, this);
+            this.runtime.emit("TOOLBOX_EXTENSIONS_NEED_UPDATE");
+        }
     }
 
+    /**
+     * PROJECT_CHANGED Event:  The project has changed (like renaming a sprite)
+     */
     projectChanged() {
         // If name changed, redraw palette (to update the button)
         if (this.spriteName !== this.runtime._editingTarget.sprite.name) {
@@ -156,6 +156,10 @@ class OzobotEvoRobot {
         }
     }
 
+    /**
+     * TODO:  Debugging only / Used for debugging all events
+     * @param {} name 
+     */
     eventTrigger (name) {
         console.log(`Event: ${name}`);
         /*
@@ -175,10 +179,13 @@ class OzobotEvoRobot {
     }
 
     /**
-     * @return {object} This extension's metadata.
+     * @return {object} This extension's metadata. (UI Element)
      */
     // BSIEVER: Note: This is called to re-gen menu whenever a target is called
     getInfo () {
+        // Get the name of the current sprite
+        let evoData = this.runtime && this.runtime._editingTarget && this.runtime._editingTarget.evoData 
+         
         this.spriteName =  "this sprite";
         if (this.runtime !== null && this.runtime._editingTarget!==null && this.runtime._editingTarget.sprite!==null && this.runtime._editingTarget.sprite.name!==null) {
             this.spriteName = this.runtime._editingTarget.sprite.name;
@@ -188,7 +195,7 @@ class OzobotEvoRobot {
             name: formatMessage({
                 id: 'ozobotevoRobot',
                 default: 'Ozobot Evo Robot Blocks',
-                description: 'Extension using BLE to communicate with Ozobot Evo robot.'
+                description: 'Extension to communicate with Ozobot Evo robot.'
             }),
             showStatusButton: false,  // The "!" status button used to search for bots in microbit
             blockIconURI: blockIconURI,
@@ -198,23 +205,8 @@ class OzobotEvoRobot {
                 {
                     func: 'CONNECT_OZOBOTEVO',
                     blockType: BlockType.BUTTON,
-                    text: this.state===STATE_DISCONNECTED ? `Connect ${this.spriteName} to an Evo` : 'Disconnect'
+                    text: (evoData!==null && evoData.state===STATE_CONNECTED) ? 'Disconnect' : `Connect ${this.spriteName} to an Evo`
                 },
-                /*{
-                    opcode: 'sendCommand',
-                    blockType: BlockType.COMMAND,
-                    text: formatMessage({
-                        id: 'microbitBot.sendCommand',
-                        default: 'send comand [COMMAND]',
-                        description: 'Send a particular command to the robot'
-                    }),
-                    arguments: {
-                        COMMAND: {
-                            type:ArgumentType.STRING,
-                            defaultValue: "A#"
-                        }
-                    }
-                },*/
                 '---',
                 {
                     opcode: 'useEvo',
@@ -231,230 +223,12 @@ class OzobotEvoRobot {
                             defaultValue: 'One'
                         }
                     }
-                },                
-                {
-                    opcode: 'writeLedString',
-                    blockType: BlockType.COMMAND,
-                    text: formatMessage({
-                        id: 'microbitBot.writeLEDString',
-                        default: 'display text [TEXT]',
-                        description: 'Write string to LED display'
-                    }),
-                    arguments: {
-                        TEXT: {
-                            type: ArgumentType.STRING,
-                            defaultValue: "Hello"
-                        }
-                    }
-                },
-                {
-                    opcode: 'setLedDisplay',
-                    blockType: BlockType.COMMAND,
-                    text: formatMessage({
-                        id: 'microbitBot.setLEDDisplay',
-                        default: 'display [MATRIX]',
-                        description: 'Set the LED display'
-                    }),
-                    arguments: {
-                        MATRIX: {
-                            type: ArgumentType.MATRIX,
-                            defaultValue: '0101010101100010101000100'
-                        }
-                    }
-                },
-                {
-                    opcode: 'clearLedDisplay',
-                    blockType: BlockType.COMMAND,
-                    text: formatMessage({
-                        id: 'microbitBot.clearLEDDisplay',
-                        default: 'clear display',
-                        description: 'Clear LED display'
-                    })
-                },
-                '---',
-                {
-                    opcode: 'setRgbLedColor',
-                    blockType: BlockType.COMMAND,
-                    text: formatMessage({
-                        id: 'microbitBot.setLEDColor',
-                        default: 'set headlight color [COLOR]',
-                        description: 'Set the RGB headlight color'
-                    }),
-                    arguments: {
-                        COLOR: {
-                            type:ArgumentType.STRING,
-                            menu: 'COLORS',
-                            defaultValue: "random"
-                        }    
-                    }
-                },
-                {
-                    opcode: 'rgbLedOff',
-                    blockType: BlockType.COMMAND,
-                    text: formatMessage({
-                        id: 'microbitBot.ledOff',
-                        default: 'turn headlights off',
-                        description: 'Turn off the LED'
-                    }),
-                    arguments: { }
-                },
-                '---',
-                {
-                    opcode: 'drive',
-                    blockType: BlockType.COMMAND,
-                    text: formatMessage({
-                        id: 'microbitBot.driveForwardBackward',
-                        default: 'drive [DIR] for [NUM] seconds',
-                        description: 'Send command to robot to drive forward or backward'
-                    }),
-                    arguments: {
-                        NUM: {
-                            type:ArgumentType.NUMBER,
-                            defaultValue: 1
-                        },
-                        DIR: {
-                            type:ArgumentType.String,
-                            menu: 'DIRS',
-                            defaultValue: _drive[0]
-                        }
-                    }
-                },
-                {
-                    opcode: 'turn',
-                    blockType: BlockType.COMMAND,
-                    text: formatMessage({
-                        id: 'microbitBot.turnRightLeft',
-                        default: 'turn [TURN] for [NUM] seconds',
-                        description: 'Send command to robot to turn right or left'
-                    }),
-                    arguments: {
-                        NUM: {
-                            type:ArgumentType.NUMBER,
-                            defaultValue: 1
-                        },
-                        TURN: {
-                            type:ArgumentType.String,
-                            menu: 'TURNS',
-                            defaultValue: _turn[0]
-                        }
-                    }
-                },
-                {
-                    opcode: 'stopMotors',
-                    blockType: BlockType.COMMAND,
-                    text: formatMessage({
-                        id: 'arduinoBot.stopMotors',
-                        default: 'stop motors',
-                        description: 'Stop both motors on the robot'
-                    })
-                },
-                '---',
-                {
-                    opcode: 'playMusic',
-                    blockType: BlockType.COMMAND,
-                    text: formatMessage({
-                        id: 'arduinoBot.playMusic',
-                        default: 'play song [SONG]',
-                        description: 'Play song using the piezo'
-                    }),
-                    arguments: {
-                        SONG: {
-                            type:ArgumentType.STRING,
-                            menu: 'SONGS',
-                            defaultValue: _songs[0]
-                        }    
-                    }
-                },
-                {
-                    opcode: 'playNote',
-                    blockType: BlockType.COMMAND,
-                    text: formatMessage({
-                        id: 'microbitBot.playNote',
-                        default: 'play note [NOTE] for [NUM] seconds',
-                        description: 'Play note using the piezo'
-                    }),
-                    arguments: {
-                        NUM: {
-                            type:ArgumentType.NUMBER,
-                            defaultValue: 1
-                        },
-                        NOTE: {
-                            type:ArgumentType.NOTE,
-                            defaultValue: 60
-                        }    
-                    }
-                },
-                '---',
-                {
-                    opcode: 'whenButtonPressed',
-                    text: formatMessage({
-                        id: 'arduinoBot.readButtonStatus',
-                        default: 'when [BUTTON] button pressed',
-                        description: 'Trigger when buttons on microbit are pressed'
-                    }),
-                    blockType: BlockType.HAT,
-                    arguments: {
-                        BUTTON: {
-                            type:ArgumentType.String,
-                            menu: 'BUTTON_STATES',
-                            defaultValue: _button[0]
-                        }
-                    }
-                },
-                {
-                    opcode: 'readLineStatus',
-                    blockType: BlockType.BOOLEAN,
-                    text: formatMessage({
-                        id: 'arduinoBot.readLineSensorStatus',
-                        default: 'line detected on [LINE]',
-                        description: 'detect line sensor state'
-                    }),
-                    arguments: {
-                        LINE: {
-                            type:ArgumentType.String,
-                            menu: 'LINE_STATES',
-                            defaultValue: _line_states[0]
-                        }
-                    }
-                },
-                {
-                    opcode: 'readDistance',
-                    blockType: BlockType.REPORTER,
-                    text: formatMessage({
-                        id: 'arduinoBot.readDistance',
-                        default: 'read distance',
-                        description: 'Get distance read from ultrasonic distance sensor'
-                    })
-                }
+                }               
             ],
             menus: {
                 EVOS: {
                     acceptReporters: false,
                     items: ['One', 'Two', 'Three']
-                },
-                SONGS: {
-                    acceptReporters: false,
-                    items: _songs
-                },
-                COLORS: {
-                    acceptReporters: false,
-                    items: _colors
-                },
-                DIRS: {
-                    acceptReporters: false,
-                    items: _drive
-                },
-                TURNS: {
-                    acceptReporters: false,
-                    items: _turn
-                },
-                BUTTON_STATES: {
-                    acceptReporters: false,
-                    items: _button
-                },
-                LINE_STATES: {
-                    acceptReporters: false,
-                    items: _line_states
                 }
             }
         };
@@ -487,9 +261,6 @@ class OzobotEvoRobot {
     onDeviceDisconnected () {
         console.log("Lost connection to robot");   
         this.runtime.emit(this.runtime.constructor.PERIPHERAL_DISCONNECTED);
-        this._mDevice = null;
-        this._mServices = null;
-        this._mStatus = 1;
     }
 
 
@@ -506,344 +277,39 @@ class OzobotEvoRobot {
         this.updatePalette();
     }
     
-
-    // All the things to do when connected to Evo
-    setupOnConnection() {
-        // Prepare for disconnects
-        this.bot.addDisconnectListener(this.disconnectHandler);
-        // Change state 
-
-        this.state = STATE_CONNECTED;
-        this.updatePalette();
-    }
-
-
+    /**
+     * UI Function 
+     */
     async updateConnection () {
-        if(this.state === STATE_DISCONNECTED) {
+        // UI Element call (must use evoData)
+        let evoData = this.runtime._editingTarget.evoData;
+        if(evoData.state === STATE_DISCONNECTED) {
             console.log('Getting BLE device');
             console.dir(this);
             try {
-                this.bot = await this.ble.OzobotEvoWebBLE.requestDevice([{namePrefix: 'Ozo'}]);
-                if (this.bot === null) {
+                evoData.bot = await this.ble.OzobotEvoWebBLE.requestDevice([{namePrefix: 'Ozo'}]);
+                if (evoData.bot === null) {
                     // Not connected??
                     console.log('NOT Got a bot')
                 } else {
                     // Connected????
                     console.log('Got a bot');
-                    console.dir(this.bot);
-                    this.setupOnConnection();
+                    console.dir(evoData.bot);
+                    evoData.setupOnConnection();
+                    this.updatePalette();
                 }
         
             } catch(err) {
                 console.log("Error / no connection.")
             }
     
-        } else if (this.state === STATE_CONNECTED) {
+        } else if (evoData.state === STATE_CONNECTED) {
             // Dis connect
-            if (this.bot !== null) {
-                await this.bot.device.disconnect();
+            if (evoData.bot !== null) {
+                await evoData.bot.device.disconnect();
             }
         }
     }
-   
-  resetRobot() {
-    this.stopMotors();
-    this.rgbLedOff();
-    this.stopMusic();
-  }
-  
-  /**
-   * RANDI just for testing out sending commands to robot via ble
-   */
-  sendCommand (args) {
-    let command = args.COMMAND;
-    if (this._mServices) this._mServices.uartService.sendText(command);
-    else console.log("No device");
-  }
-  
-  clearLedDisplay (args) {
-    let ledMatrix = [[false, false, false, false, false],
-                     [false, false, false, false, false],
-                     [false, false, false, false, false],
-                     [false, false, false, false, false],
-                     [false, false, false, false, false]];
-    console.log("Clear led display");
-    if (this._mServices) this._mServices.ledService.writeMatrixState(ledMatrix);
-  }
-  
-  setLedDisplay (args) {
-    let matrix = args.MATRIX;
-    let ledMatrix = [[false, false, false, false, false],
-                     [false, false, false, false, false],
-                     [false, false, false, false, false],
-                     [false, false, false, false, false],
-                     [false, false, false, false, false]];
-    for (let i = 0; i < 5; i++) {
-        for (let j = 0; j < 5; j++) {
-            if (matrix[5*i+j] == 1) ledMatrix[i][j] = true;
-        }
-    }
-    console.log("Set led matrix: " + ledMatrix);
-    if (this._mServices) this._mServices.ledService.writeMatrixState(ledMatrix);
-
-  }
-  
-  writeLedString (args) {
-    // Figure out caller:  Which script is "Active" and whether palette or script (er...is that needed????)
-    // Do need to know which script is active to update button / text / stuff. 
-
-    let text = args.TEXT;
-    console.log("Write led string: " + text);
-    if (this._mServices) this._mServices.ledService.writeText(text);
-
-  }
-  
-   /**
-   *
-   */
-  async playMusic (args) {
-    console.log("play song: " + args.SONG);    
-    
-    // Translate song to index to get notes
-    let idxStr = _songs.indexOf(args.SONG);
-    let song_notes = _songs_notes[idxStr];
-    
-    // Loop through notes and play them
-    let arg = {};
-    
-    for (let i=0; i<_songs_notes[idxStr].length; i++) {
-        arg.NOTE = _songs_notes[idxStr][i];
-        arg.NUM = 0.25;
-        await this.playNote(arg);
-    }
-  }
-
-  /**
-   *
-   */
-  playNote (args) {
-    console.log("play note: " + args.NOTE);
-    let secs = args.NUM;
-    let noteIdx = Cast.toNumber(args.NOTE);
-    noteIdx = MathUtil.clamp(noteIdx, MIN_PIEZO_NOTE, MAX_PIEZO_NOTE) - 60;
-    let note = _notes_protocol[noteIdx];
-    console.log(noteIdx + " " + note);
-    
-    // Play song  
-    if (this._mServices) this._mServices.uartService.sendText(note);
-    
-    return new Promise(resolve => {
-            setTimeout(() => {
-                this.stopMusic();
-                resolve();
-            }, secs*1000);
-        });
-  }
-  
-  stopMusic () {
-    console.log("Music off");     
-    if (this._mServices) this._mServices.uartService.sendText('O#');
-    
-    return;
-  }
-  
-  /**
-   *
-   */
-  setRgbLedColor (args) {
-    // Translate color to ble protocol command
-    let colorCmd = 0;
-    
-    if (args.COLOR == 'random') {
-        let idx = Math.floor(Math.random() * (_colors.length - 1));
-        colorCmd = _colors_protocol[idx];
-    } else {
-        colorCmd = _colors_protocol[_colors.indexOf(args.COLOR)];
-    }
-    
-    console.log("set LED color: " + args.COLOR + " " + colorCmd);
-    // Send message
-    if (this._mServices) this._mServices.uartService.sendText(colorCmd);
-    
-  }
-  rgbLedOff () {
-    console.log("Headlights off: " + "O#");
-    if (this._mServices) this._mServices.uartService.sendText('N#');
-        
-    return;
-  }
-  
-  /**
-   *
-   */
-  updateSensors (event) {
-    console.log("Got UART data: " + event.detail);
-    //console.log(event);
-    let readings = event.detail.split(",")
-    if (readings.length == 5) {
-        this.dist_read = parseInt(readings[0].substring(4));
-        this.a_button = parseInt(readings[1]);
-        this.b_button = parseInt(readings[2]);
-        this.left_line = parseInt(readings[3]);
-        this.right_line = parseInt(readings[4]);
-    }
-    if (isNaN(this.dist_read)) this.dist_read = 0;
-    if (isNaN(this.a_button)) this.a_button = 0;
-    if (isNaN(this.b_button)) this.b_button = 0;
-    if (isNaN(this.left_line)) this.left_line = 0;
-    if (isNaN(this.right_line)) this.right_line = 0;
-  }
-  
-  /**
-     * Implement readDistance
-     * @returns {string} the distance, in cm, of the nearest object. -1 means error
-     */
-  readDistance () {
-    let current_time = Date.now();
-    if (current_time - this.last_reading_time > 250) {
-        console.log("Updating sensors");
-        // send command to trigger distance read
-        if (this._mServices) this._mServices.uartService.sendText('W#');
-        this.last_reading_time = current_time;
-    }
-    
-    let distance = this.dist_read;
-    if (distance == 0) {
-        distance = -1;
-    }
-    
-    return distance;
-  }
-  
-      /**
-     * Implement readButtonStaus
-     * @returns {string} t
-     */
-  readButtonStatus (args) {
-    let current_time = Date.now();
-    if (current_time - this.last_reading_time > 250) {
-        console.log("Updating sensors");
-        // send command to trigger distance read
-        if (this._mServices) this._mServices.uartService.sendText('W#');
-        this.last_reading_time = current_time;
-    }
-    
-    var state = args.BUTTON;
-    if (state == 'A') {
-        return this.a_button == 1;   
-    } else if (state == 'B') {
-        return this.b_button == 1;
-    } else if (state == 'A or B') {
-        return (this.a_button == 1) || (this.b_button == 1);
-    } else if (state == 'A and B') {
-        return (this.a_button == 1) && (this.b_button == 1);
-    } else if (state == 'neither A nor B') {
-        return (this.a_button == 0) && (this.b_button == 0);
-    }
-    return false; // should never get here
-  }
-  /**
-    * Implement whenButtonPressed
-    */
-  whenButtonPressed(args) {
-    return this.readButtonStatus(args);
-  }
-  
-  /**
-     * Implement readLineStatus
-     * @returns {string} t
-     */
-  readLineStatus (args) {
-    let current_time = Date.now();
-    if (current_time - this.last_reading_time > 250) {
-        console.log("Updating sensors");
-        // send command to trigger distance read
-        if (this._mServices) this._mServices.uartService.sendText('W#');
-        this.last_reading_time = current_time;
-    }
-    
-    var state = args.LINE;
-    
-    if (state == 'right side') {
-        return this.right_line == 1;   
-    } else if (state == 'left side') {
-        return this.left_line == 1;
-    } else if (state == 'both sides') {
-        return (this.right_line == 1) && (this.left_line == 1);
-    } else if (state == 'neither side') {
-        return (this.right_line == 0) && (this.left_line == 0);
-    }
-    return false; // should never get here
-  }
-
-  stopMotors () {
-    console.log("Sending stop motors");
-    if (this._mServices) this._mServices.uartService.sendText('0#');
-  }
-    
-  /**
-   * Implement drive to drive forward or backward
-   * @secs {number} the number of seconds to drive backward
-   * @dir {string} whether to turn "left" or "right"
-   * @callback {function} the code to call when this function is done executing
-   */
-  drive (args) {
-	var msg = {};
-    var secs = args.NUM;
-    var dir = args.DIR;
-    
-    if (dir == 'forward') {
-        console.log("Sending drive forward, secs: " + secs);        
-        if (this._mServices) this._mServices.uartService.sendText('A#');
-    } else {
-        console.log('Sending drive backward, secs: ' + secs);
-        if (this._mServices) this._mServices.uartService.sendText('B#');
-
-    }
-    if (this._mConnection != null) this._mConnection.postMessage(msg);  
-    
-    if (secs == '') // if seconds is left blank, don't pump the brakes
-        return;
-    
-    return new Promise(resolve => {
-            setTimeout(() => {
-                this.stopMotors();
-                resolve();
-            }, secs*1000);
-        });
-  }
-  
-  /**
-   * Implement turn to turn left or right
-   * @secs {number} the number of seconds to turn left
-   * @dir {string} whether to turn "left" or "right"
-   * @callback {function} the code to call when this function is done executing
-   */
-  turn(args) {
-	var msg = {};
-    var secs = args.NUM;
-    var dir = args.TURN;
-    
-    if (dir == 'left') {
-        console.log("Sending turn left, secs: " + secs);        
-        if (this._mServices) this._mServices.uartService.sendText('E#');
-    } else {
-        console.log("Sending turn right, secs: " + secs);        
-        if (this._mServices) this._mServices.uartService.sendText('D#');
-    }
-
-    if (this._mConnection != null) this._mConnection.postMessage(msg);  
-
-    if (secs == '') // if seconds is left blank, don't pump the brakes
-        return;
-    
-    return new Promise(resolve => {
-            setTimeout(() => {
-                this.stopMotors();
-                resolve();
-            }, secs*1000);
-        });
-  }
  
 }
-module.exports = OzobotEvoRobot;
+module.exports = OzobotEvoBlocks;
