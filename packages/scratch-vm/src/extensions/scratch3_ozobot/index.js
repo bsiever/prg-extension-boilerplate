@@ -83,9 +83,21 @@ class EvoData {
     setupOnConnection() {
         // Prepare for disconnects
         this.bot.addDisconnectListener(this.didDisconnectHandler);
-        // Change state 
+
+ 
+        // TODO / Debugging Log all event notifications
+        for (const [event, value] of Object.entries(this.bot.commandsNotifications.notifications)) {
+            console.log(`Subscribing to ${event} with value ${value}`)
+            this.bot.subscribeCommand(event, this.didRecieveEvent.bind(this, event))
+        } 
 
         this.state = STATE_CONNECTED;
+    }
+
+    didRecieveEvent(name, data) {
+        console.log("Event")
+        console.dir(name)
+        console.dir(data)
     }
 
     didDisconnect() {
@@ -123,7 +135,7 @@ class OzobotEvoBlocks {
         // Project / VM interaction stuff????  (Look into these)
         this.runtime.on('CONNECT_OZOBOTEVO', this.updateConnection.bind(this));
         this.runtime.on('PROJECT_CHANGED', this.projectChanged.bind(this));
-        this.runtime.on('TOOLBOX_EXTENSIONS_NEED_UPDATE', this.targetChanged.bind(this));
+        this.runtime.on('TOOLBOX_EXTENSIONS_NEED_UPDATE', this.editingTargetChanged.bind(this));
 
         // BSIEVER: Debugging to watch events
         allEvents.forEach(e => this.runtime.on(e, this.eventTrigger.bind(this, e)));
@@ -135,7 +147,7 @@ class OzobotEvoBlocks {
      * 
      * Ensures that each target has an "EvoData" object
      */
-    targetChanged() {
+    editingTargetChanged() {
         // Update the "bot" variable for this target
         console.log(`Target changed: ${this.runtime._editingTarget.sprite.name}`)
         // If the current object doesn't have an Evo, associate a new uninit one 
@@ -223,7 +235,26 @@ class OzobotEvoBlocks {
                             defaultValue: 'One'
                         }
                     }
-                }               
+                },               
+                {
+                    opcode: 'forward',             // Method to run
+                    blockType: BlockType.COMMAND,  // Type of Block
+                    text: formatMessage({
+                        id: 'ozobotevoblocks.forward',
+                        default: 'forward [DISTANCE] mm for [TIME] seconds',
+                        description: 'Move forward or backward for the given distance or time'
+                    }),
+                    arguments: {
+                        DISTANCE: {
+                            type:ArgumentType.NUMBER,
+                            defaultValue: 20
+                        },
+                        TIME: {
+                            type:ArgumentType.NUMBER,
+                            defaultValue: 1
+                        }
+                    }
+                }
             ],
             menus: {
                 EVOS: {
@@ -310,6 +341,54 @@ class OzobotEvoBlocks {
             }
         }
     }
+
+
+    checkBotForTarget(target) {
+        // Return null (if invalid) or bot object otherwise
+        return target.evoData.bot
+    }
+
+    forward (args, util) {
+        console.log(`forward`)
+        console.dir(args)
+        const bot = this.checkBotForTarget(util.target);
+        if (bot !== null) {
+            const dist = Cast.toNumber(args.DISTANCE)
+            const time = 1000 * Cast.toNumber(args.TIME)
+            console.log(`Sending dist: ${dist} and time ${time}`)
+            bot.sendCommandMove(bot.moveForwardBackward(Cast.toNumber(args.DISTANCE), 1000 * Cast.toNumber(args.TIME)));
+
+            // TODO: Need to await completion of motion
+        }
+
+        // util.target.evoData
+
+
+
+        // var msg = {};
+        // var secs = args.NUM;
+        // var dir = args.DIR;
+        
+        // if (dir == 'forward') {
+        //     console.log("Sending drive forward, secs: " + secs);        
+        //     if (this._mServices) this._mServices.uartService.sendText('A#');
+        // } else {
+        //     console.log('Sending drive backward, secs: ' + secs);
+        //     if (this._mServices) this._mServices.uartService.sendText('B#');
+    
+        // }
+        // if (this._mConnection != null) this._mConnection.postMessage(msg);  
+        
+        // if (secs == '') // if seconds is left blank, don't pump the brakes
+        //     return;
+        
+        // return new Promise(resolve => {
+        //         setTimeout(() => {
+        //             this.stopMotors();
+        //             resolve();
+        //         }, secs*1000);
+        //     });
+      }
  
 }
 module.exports = OzobotEvoBlocks;
