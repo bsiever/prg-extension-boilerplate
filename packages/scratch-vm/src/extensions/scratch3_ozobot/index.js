@@ -10,6 +10,8 @@ const MathUtil = require('../../util/math-util');
 const microbit = require('microbit-web-bluetooth');
 
 const OzobotWebBle = require('./ozobot-webble.umd.js');
+const { listenerCount } = require("../../engine/runtime");
+const { List } = require("immutable");
 
 
 const allEvents =  ['ANSWER',
@@ -73,7 +75,7 @@ const STATE_DISCONNECTED = 2;
 const MOTION_STILL = 1;
 const MOTION_STARTED = 2;
 const MOTION_COMPLETED = 3;
-
+const LED_NAMES = ['Top', 'Far Left', 'Left', 'Center', 'Right', 'Far Right', 'Back'];
 class EvoData {
     constructor(target, blocks) {
         this.bot = null;
@@ -82,8 +84,14 @@ class EvoData {
         this.target = target;  // Scratch target object for this Evo object
         this.didDisconnectHandler = this.didDisconnect.bind(this);
 
-        this.motion_state = MOTION_STILL;
-        this.whenDone = null;
+        this.pendingOperations = new Map();
+    }
+
+    eventCompletionPromise(event) {
+        let callbacks = this.pendingOperations.get(event) || [];
+        let p = new Promise(resolve => callbacks.push(resolve));
+        this.pendingOperations.set(event, callbacks);
+        return p;
     }
 
     // All the things to do when connected to Evo
@@ -92,7 +100,6 @@ class EvoData {
         this.bot.addDisconnectListener(this.didDisconnectHandler);
         this.bot.stopFile(2,1);  // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
         this.bot.setMovementNotifications(true);
-        this.motion_state = MOTION_STILL;
 
         // this.bot.toggleClassroomBehavior(true); // Set classroom behavior (disable spontaneous stuff?)
         // // Disable wandering
@@ -101,33 +108,27 @@ class EvoData {
  
         // TODO / Debugging Log all event notifications
         for (const [event, value] of Object.entries(this.bot.commandsNotifications.notifications)) {
-            console.log(`Subscribing to ${event} with value ${value}`)
-            this.bot.subscribeCommand(event, this.didRecieveEvent.bind(this, event))
-        } 
-
-        this.bot.subscribeCommand('movementFinishedSimple', this.didFinishMovement.bind(this));
-        this.bot.subscribeCommand('movementFinishedExtended', this.didFinishMovement.bind(this));
-
+            console.log(`Subscribing to ${event} with value ${value}`);
+            this.bot.subscribeCommand(event, this.didRecieveEvent.bind(this, event));
+        }
         this.state = STATE_CONNECTED;
     }
 
- 
+    completeEvents(name, data=undefined) {
+        // Get and process all pending operations
+        let events = this.pendingOperations.get(name) || [];
+        events.forEach( e => e(data));
+        // Clear them
+        this.pendingOperations.set(name, []);
+    }
 
-    didFinishMovement(data) {
-        console.log("Finished Movement")
-        console.dir(this);
-        console.dir(this.whenDone);
-        if (this.bot && this.bot.whenDone) {
-            console.log("Calling Resolver")
-            this.bot.whenDone();
-            this.bot.whenDone = null;
-        }
+    clearEvents() {
+        this.pendingOperations.forEach( (k, v, m) => v() );
     }
 
     didRecieveEvent(name, data) {
-        console.log("Event")
-        console.dir(name)
-        console.dir(data)
+        console.log(`Event ${name}: ${data}`);
+        this.completeEvents(name);
     }
 
     didDisconnect() {
@@ -276,7 +277,7 @@ class OzobotEvoBlocks {
                     text: formatMessage({
                         id: 'ozobotevoblocks.forward',
                         default: 'forward [DISTANCE] mm at [SPEED] mm/s',
-                        description: 'Move forward a distance for a speed'
+                        description: 'Move forward a distance [-1500,1500] for a speed [15,85]'
                     }),
                     arguments: {
                         DISTANCE: {
@@ -288,17 +289,69 @@ class OzobotEvoBlocks {
                             defaultValue: 50
                         }
                     }
+                },
+                {
+                    opcode: 'rotate',              // Method to run
+                    blockType: BlockType.COMMAND,  // Type of Block
+                    text: formatMessage({
+                        id: 'ozobotevoblocks.rotate',
+                        default: 'rotate [DEGREES] degrees left at [SPEED] mm/s',
+                        description: 'Rotate a given number of degrees at speed [15, 85]'
+                    }),
+                    arguments: {
+                        DEGREES: {
+                            type:ArgumentType.NUMBER,
+                            defaultValue: 90
+                        },
+                        SPEED: {
+                            type:ArgumentType.NUMBER,
+                            defaultValue: 50
+                        }
+                    }
+                },
+                {
+                    opcode: 'setLEDs',              // Method to run
+                    blockType: BlockType.COMMAND,  // Type of Block
+                    text: formatMessage({
+                        id: 'ozobotevoblocks.setLED',
+                        default: 'LED [LED] to [COLOR]',
+                        description: 'Set the given LEDs [0-7] to the Color'
+                    }),
+                    arguments: {
+                        LED: {
+                            type:ArgumentType.NUMBER,
+                            default: 0
+                        },
+                        COLOR: {
+                            type:ArgumentType.COLOR
+                            // defaultValue: 50
+                        }
+                    }
                 }
+// TODO:  Notes, Sounds, LEDs, MotorPower
+// TODO: Events (lines, colors, obstacles, Button?)
+// TODO: (Maybe):  IR Messages???
+
+
+// Major: Script stop (stop all)
+// Disconnect: Clear all events 
+
             ],
             menus: {
                 EVOS: {
                     acceptReporters: false,
                     items: ['One', 'Two', 'Three']
+                }, 
+                LEDS: {
+                    acceptReporters: false,
+                    items: LED_NAMES
                 }
             }
         };
     }
+
     
+
 
     // BSIEVER: These may not be needed for Evo, but they are somehow used....
     /* The following 4 functions have to exist for the peripherial indicator */
@@ -377,72 +430,72 @@ class OzobotEvoBlocks {
     }
 
 
-    checkBotForTarget(target) {
+    checkTargetForEvo(target) {
         // Return null (if invalid) or bot object otherwise
-        return target.evoData.bot
+        return target.evoData
+    }
+
+    timedPromise(time, fail = false) {
+        return new Promise((resolve, reject) => setTimeout(() => (fail ? reject() : resolve()), time));
+    }
+
+    restrictRange(min, max, value) {
+        return Math.max(min, Math.min(value, max))
+    }
+
+
+    async setLEDs (args, util) {
+        console.log(`setLEDs`);
+        console.dir(args);
+        let ledID = 2**this.restrictRange(0,7,Cast.toNumber(args.LED));
+        console.log(`LED ID: ${ledID}`);
+  //https://www.codegrepper.com/code-examples/javascript/javascript+convert+color+string+to+rgb
+        var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(args.COLOR);
+        if(result){
+            var r= parseInt(result[1], 16);
+            var g= parseInt(result[2], 16);
+            var b= parseInt(result[3], 16);
+            console.log(r+","+g+","+b);
+
+            const evoData = this.checkTargetForEvo(util.target);
+            evoData.bot.setLED(ledID, r, g, b);
+        }         
     }
 
     async forward (args, util) {
         console.log(`forward`);
-        const bot = this.checkBotForTarget(util.target);
         console.dir(args);
-        const dist = Cast.toNumber(args.DISTANCE);
-        const speed =  Cast.toNumber(args.SPEED);
+        const evoData = this.checkTargetForEvo(util.target);
+        const dist = this.restrictRange(-1500, 1500, Cast.toNumber(args.DISTANCE));
+        const speed =  this.restrictRange(15, 300, Cast.toNumber(args.SPEED));
         console.log(`Sending dist: ${dist} and speed ${speed}`);
-        let rp = new Promise( resolve => {
-            console.log("Storing Resolver")
-            console.dir(resolve);
-            bot.whenDone = resolve;
-        })
-        await bot.moveForwardBackward(dist, speed);
+
+        // End any other motion in progress 
+        evoData.completeEvents('movementFinishedSimple');
+        let expectedTime = dist / speed * 1000 * 1.2; 
+        // Create promises to ensure end (either completion or time)
+        let rp = Promise.any([evoData.eventCompletionPromise('movementFinishedSimple'), this.timedPromise(expectedTime, true)]);
+        // Initiate motion
+        await evoData.bot.moveForwardBackward(dist, speed);
         return rp;
-
-
-
-        // if (bot !== null) {
-
-        //     // If we're already in-motion
-        //     if (util.stackFrame.forward) {
-        //         // Check the elapsed time to see if we should abort
-        //         if (bot.motion_state === MOTION_COMPLETED) {
-        //             bot.motion_state = MOTION_STILL;
-        //         } else {
-        //             util.yield();
-        //         }
-        //     } else {
-        //         // Start the motion / Start the timer
-                    
-        //         util.stackFrame.forward = true;
-        //     }
-        // }
-        // util.target.evoData
-
-
-
-        // var msg = {};
-        // var secs = args.NUM;
-        // var dir = args.DIR;
-        
-        // if (dir == 'forward') {
-        //     console.log("Sending drive forward, secs: " + secs);        
-        //     if (this._mServices) this._mServices.uartService.sendText('A#');
-        // } else {
-        //     console.log('Sending drive backward, secs: ' + secs);
-        //     if (this._mServices) this._mServices.uartService.sendText('B#');
-    
-        // }
-        // if (this._mConnection != null) this._mConnection.postMessage(msg);  
-        
-        // if (secs == '') // if seconds is left blank, don't pump the brakes
-        //     return;
-        
-        // return new Promise(resolve => {
-        //         setTimeout(() => {
-        //             this.stopMotors();
-        //             resolve();
-        //         }, secs*1000);
-        //     });
       }
- 
+
+      async rotate (args, util) {
+        console.log(`rotate`);
+        console.dir(args);
+        const evoData = this.checkTargetForEvo(util.target);
+        const degrees = Cast.toNumber(args.DEGREES);
+        const speed =  this.restrictRange(15, 600, Cast.toNumber(args.SPEED));
+        console.log(`Sending degrees: ${degrees} and speed ${speed}`);
+
+        // End any other motion in progress 
+        evoData.completeEvents('movementFinishedSimple');
+        let expectedTime = degrees / speed * 1000 * 1.2; 
+        // Create promises to ensure end (either completion or time)
+        let rp = Promise.any([evoData.eventCompletionPromise('movementFinishedSimple'), this.timedPromise(expectedTime, true)]);
+        // Initiate motion
+        await evoData.bot.rotate(degrees, speed);
+        return rp;
+      }      
 }
 module.exports = OzobotEvoBlocks;

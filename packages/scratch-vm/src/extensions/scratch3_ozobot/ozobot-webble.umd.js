@@ -1652,6 +1652,11 @@
             let data = this.commands.playFile(fileType, name, abort ? 1 : 0);
             return this.sendCommandCommon(data);
         }
+        // Added by BSIEVER
+        stopFile(fileType, flush) {
+            let data = this.commands.stopFile(fileType, flush);
+            return this.sendCommandCommon(data);
+        }
         toggleLineFollowing(toggle) {
             let data = this.commands.toggleLineFollowing(toggle);
             return this.sendCommandCommon(data);
