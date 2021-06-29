@@ -75,7 +75,7 @@ const STATE_DISCONNECTED = 2;
 const MOTION_STILL = 1;
 const MOTION_STARTED = 2;
 const MOTION_COMPLETED = 3;
-const LED_NAMES = ['Top', 'Far Left', 'Left', 'Center', 'Right', 'Far Right', 'Back'];
+const LED_NAMES = ['Top', 'Far Left', 'Left', 'Center', 'Right', 'Far Right', 'Power Button', 'Back'];
 class EvoData {
     constructor(target, blocks) {
         this.bot = null;
@@ -315,16 +315,17 @@ class OzobotEvoBlocks {
                     text: formatMessage({
                         id: 'ozobotevoblocks.setLED',
                         default: 'LED [LED] to [COLOR]',
-                        description: 'Set the given LEDs [0-7] to the Color'
+                        description: 'Set the given LED to the Color'
                     }),
                     arguments: {
                         LED: {
                             type:ArgumentType.NUMBER,
-                            default: 0
+                            menu: 'LEDS', 
+                            defaultValue: 'Top'
                         },
                         COLOR: {
-                            type:ArgumentType.COLOR
-                            // defaultValue: 50
+                            type:ArgumentType.COLOR,
+                            defaultValue: '#00ff00'
                         }
                     }
                 }
@@ -447,7 +448,8 @@ class OzobotEvoBlocks {
     async setLEDs (args, util) {
         console.log(`setLEDs`);
         console.dir(args);
-        let ledID = 2**this.restrictRange(0,7,Cast.toNumber(args.LED));
+        let ledID = 2**LED_NAMES.indexOf(args.LED);
+        // let ledID = 2**this.restrictRange(0,7,Cast.toNumber(args.LED));
         console.log(`LED ID: ${ledID}`);
   //https://www.codegrepper.com/code-examples/javascript/javascript+convert+color+string+to+rgb
         var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(args.COLOR);
