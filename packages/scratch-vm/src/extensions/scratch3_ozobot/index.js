@@ -70,6 +70,10 @@ const EXTENSION_ID = 'ozobotEvoRobot';
 const STATE_CONNECTED = 1;
 const STATE_DISCONNECTED = 2;
 
+const MOTION_STILL = 1;
+const MOTION_STARTED = 2;
+const MOTION_COMPLETED = 3;
+
 class EvoData {
     constructor(target, blocks) {
         this.bot = null;
@@ -77,13 +81,23 @@ class EvoData {
         this.ozoblocks = blocks
         this.target = target;  // Scratch target object for this Evo object
         this.didDisconnectHandler = this.didDisconnect.bind(this);
+
+        this.motion_state = MOTION_STILL;
+        this.whenDone = null;
     }
 
     // All the things to do when connected to Evo
     setupOnConnection() {
         // Prepare for disconnects
         this.bot.addDisconnectListener(this.didDisconnectHandler);
+        this.bot.stopFile(2,1);  // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
+        this.bot.setMovementNotifications(true);
+        this.motion_state = MOTION_STILL;
 
+        // this.bot.toggleClassroomBehavior(true); // Set classroom behavior (disable spontaneous stuff?)
+        // // Disable wandering
+        // this.bot.setWanderSettings(false, 0, 0, 0);
+        // this.bot.setAutoOffTimeSettings(600); // 5 min?
  
         // TODO / Debugging Log all event notifications
         for (const [event, value] of Object.entries(this.bot.commandsNotifications.notifications)) {
@@ -91,7 +105,23 @@ class EvoData {
             this.bot.subscribeCommand(event, this.didRecieveEvent.bind(this, event))
         } 
 
+        this.bot.subscribeCommand('movementFinishedSimple', this.didFinishMovement.bind(this));
+        this.bot.subscribeCommand('movementFinishedExtended', this.didFinishMovement.bind(this));
+
         this.state = STATE_CONNECTED;
+    }
+
+ 
+
+    didFinishMovement(data) {
+        console.log("Finished Movement")
+        console.dir(this);
+        console.dir(this.whenDone);
+        if (this.bot && this.bot.whenDone) {
+            console.log("Calling Resolver")
+            this.bot.whenDone();
+            this.bot.whenDone = null;
+        }
     }
 
     didRecieveEvent(name, data) {
@@ -102,8 +132,12 @@ class EvoData {
 
     didDisconnect() {
         console.log('Evo Disconnect');
+        this.bot.removeDisconnectListener(this.didDisconnectHandler);
+        this.bot = null;
         this.state = STATE_DISCONNECTED;
         this.ozoblocks.updatePalette();
+
+        // TODO: Stop the script
         // TODO: May need to redraw menu.  Eh, just do it...
     }
 }
@@ -128,7 +162,7 @@ class OzobotEvoBlocks {
 
         this.state = STATE_DISCONNECTED;
         this.ble = OzobotWebBle;
-        this.bot = null;   // this.bot.sendCommandMove(this.bot.moveForwardBackward(150,200))
+        this.bot = null;  
 
         this.spriteName = "none";
                 
@@ -241,17 +275,17 @@ class OzobotEvoBlocks {
                     blockType: BlockType.COMMAND,  // Type of Block
                     text: formatMessage({
                         id: 'ozobotevoblocks.forward',
-                        default: 'forward [DISTANCE] mm for [TIME] seconds',
-                        description: 'Move forward or backward for the given distance or time'
+                        default: 'forward [DISTANCE] mm at [SPEED] mm/s',
+                        description: 'Move forward a distance for a speed'
                     }),
                     arguments: {
                         DISTANCE: {
                             type:ArgumentType.NUMBER,
                             defaultValue: 20
                         },
-                        TIME: {
+                        SPEED: {
                             type:ArgumentType.NUMBER,
-                            defaultValue: 1
+                            defaultValue: 50
                         }
                     }
                 }
@@ -348,19 +382,39 @@ class OzobotEvoBlocks {
         return target.evoData.bot
     }
 
-    forward (args, util) {
-        console.log(`forward`)
-        console.dir(args)
+    async forward (args, util) {
+        console.log(`forward`);
         const bot = this.checkBotForTarget(util.target);
-        if (bot !== null) {
-            const dist = Cast.toNumber(args.DISTANCE)
-            const time = 1000 * Cast.toNumber(args.TIME)
-            console.log(`Sending dist: ${dist} and time ${time}`)
-            bot.sendCommandMove(bot.moveForwardBackward(Cast.toNumber(args.DISTANCE), 1000 * Cast.toNumber(args.TIME)));
+        console.dir(args);
+        const dist = Cast.toNumber(args.DISTANCE);
+        const speed =  Cast.toNumber(args.SPEED);
+        console.log(`Sending dist: ${dist} and speed ${speed}`);
+        let rp = new Promise( resolve => {
+            console.log("Storing Resolver")
+            console.dir(resolve);
+            bot.whenDone = resolve;
+        })
+        await bot.moveForwardBackward(dist, speed);
+        return rp;
 
-            // TODO: Need to await completion of motion
-        }
 
+
+        // if (bot !== null) {
+
+        //     // If we're already in-motion
+        //     if (util.stackFrame.forward) {
+        //         // Check the elapsed time to see if we should abort
+        //         if (bot.motion_state === MOTION_COMPLETED) {
+        //             bot.motion_state = MOTION_STILL;
+        //         } else {
+        //             util.yield();
+        //         }
+        //     } else {
+        //         // Start the motion / Start the timer
+                    
+        //         util.stackFrame.forward = true;
+        //     }
+        // }
         // util.target.evoData
 
 
