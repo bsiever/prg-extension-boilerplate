@@ -7,10 +7,9 @@ const formatMessage = require('format-message');
 const Cast = require('../../util/cast');
 const MathUtil = require('../../util/math-util');
 
-const microbit = require('microbit-web-bluetooth');
 
 const OzobotWebBle = require('./ozobot-webble.umd.js');
-const { listenerCount } = require("../../engine/runtime");
+const { listenerCount, THREAD_STEP_INTERVAL } = require("../../engine/runtime");
 const { List } = require("immutable");
 
 
@@ -83,7 +82,7 @@ class EvoData {
         this.ozoblocks = blocks
         this.target = target;  // Scratch target object for this Evo object
         this.didDisconnectHandler = this.didDisconnect.bind(this);
-
+        this.name = '';
         this.pendingOperations = new Map();
     }
 
@@ -95,12 +94,13 @@ class EvoData {
     }
 
     // All the things to do when connected to Evo
-    setupOnConnection() {
+    async setupOnConnection() {
         // Prepare for disconnects
         this.bot.addDisconnectListener(this.didDisconnectHandler);
-        this.bot.stopFile(2,1);  // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
-        this.bot.setMovementNotifications(true);
-
+        await this.bot.stopFile(2,1);  // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
+        await this.bot.setMovementNotifications(true);
+        this.name = await this.bot.getName();
+        console.log(`Name: ${this.name}`)
         // this.bot.toggleClassroomBehavior(true); // Set classroom behavior (disable spontaneous stuff?)
         // // Disable wandering
         // this.bot.setWanderSettings(false, 0, 0, 0);
@@ -111,7 +111,9 @@ class EvoData {
             console.log(`Subscribing to ${event} with value ${value}`);
             this.bot.subscribeCommand(event, this.didRecieveEvent.bind(this, event));
         }
+        this.target.runtime.emit('SAY', this.target, 'think', 'Ready');
         this.state = STATE_CONNECTED;
+        console.log("Done with setupOnConnection")
     }
 
     completeEvents(name, data=undefined) {
@@ -138,6 +140,10 @@ class EvoData {
         this.state = STATE_DISCONNECTED;
         this.ozoblocks.updatePalette();
 
+        this.target.runtime.emit('SAY', this.target, 'say', 'Disconnected');
+        // BSIEVER: Check the below
+        this.target.runtime.emit(this.runtime.constructor.PERIPHERAL_DISCONNECTED);
+
         // TODO: Stop the script
         // TODO: May need to redraw menu.  Eh, just do it...
     }
@@ -161,22 +167,35 @@ class OzobotEvoBlocks {
         // Create a disconnect handler callback
         this.disconnectHandler = this.evoDisconnect.bind(this);
 
-        this.state = STATE_DISCONNECTED;
         this.ble = OzobotWebBle;
-        this.bot = null;  
 
         this.spriteName = "none";
-                
+
         // Project / VM interaction stuff????  (Look into these)
         this.runtime.on('CONNECT_OZOBOTEVO', this.updateConnection.bind(this));
         this.runtime.on('PROJECT_CHANGED', this.projectChanged.bind(this));
         this.runtime.on('TOOLBOX_EXTENSIONS_NEED_UPDATE', this.editingTargetChanged.bind(this));
+        this.runtime.on('PROJECT_STOP_ALL', this.stopAll.bind(this));
+
+/*
+TODO: Handle events
+                    'PROJECT_RUN_START',
+                    'PROJECT_RUN_STOP',
+                    'PROJECT_START',
+                    'PROJECT_STOP_ALL',
+
+*/
 
         // BSIEVER: Debugging to watch events
         allEvents.forEach(e => this.runtime.on(e, this.eventTrigger.bind(this, e)));
 
     }
 
+
+    async stopAll() {
+        // The project is stopped.  Stop and clear all blocks. 
+        console.log("Stop All");
+    }
     /**
      * TOOLBOX_EXTENSIONS_NEED_UPDATE Event: Something substantial has changed, like the selected target
      * 
@@ -232,7 +251,6 @@ class OzobotEvoBlocks {
     getInfo () {
         // Get the name of the current sprite
         let evoData = this.runtime && this.runtime._editingTarget && this.runtime._editingTarget.evoData 
-         
         this.spriteName =  "this sprite";
         if (this.runtime !== null && this.runtime._editingTarget!==null && this.runtime._editingTarget.sprite!==null && this.runtime._editingTarget.sprite.name!==null) {
             this.spriteName = this.runtime._editingTarget.sprite.name;
@@ -252,7 +270,10 @@ class OzobotEvoBlocks {
                 {
                     func: 'CONNECT_OZOBOTEVO',
                     blockType: BlockType.BUTTON,
-                    text: (evoData!==null && evoData.state===STATE_CONNECTED) ? 'Disconnect' : `Connect ${this.spriteName} to an Evo`
+                    // TODO: Add Ozo name to disconnect string
+                    text: (evoData!==null && evoData.state===STATE_CONNECTED) ? 
+                       (evoData && evoData.name ? `Disconnect from ${evoData.name}` : 'Disconnect') :
+                       (`Connect ${this.spriteName} to an Evo`)
                 },
                 '---',
                 {
@@ -328,8 +349,28 @@ class OzobotEvoBlocks {
                             defaultValue: '#00ff00'
                         }
                     }
+                },
+                {
+                    opcode: 'tone',              // Method to run
+                    blockType: BlockType.COMMAND,  // Type of Block
+                    text: formatMessage({
+                        id: 'ozobotevoblocks.tone',
+                        default: 'play [TONE] Hz for [DURATION] (ms)',
+                        description: 'Play the given tone for the duration'
+                    }),
+                    arguments: {
+                        TONE: {
+                            type:ArgumentType.NOTE,
+                            defaultValue: 84
+                        },
+                        DURATION: {
+                            type:ArgumentType.NUMBER,
+                            defaultValue: 1000
+                        }
+                    }
                 }
-// TODO:  Notes, Sounds, LEDs, MotorPower
+
+// TODO:  Notes, Sounds, MotorPower
 // TODO: Events (lines, colors, obstacles, Button?)
 // TODO: (Maybe):  IR Messages???
 
@@ -362,6 +403,7 @@ class OzobotEvoBlocks {
     disconnect() {
         console.log('disconnect()');
     }
+
     scan() {
         // Called by the info button. 
         console.log('scan()');
@@ -369,7 +411,6 @@ class OzobotEvoBlocks {
     }
     isConnected() {
         console.log('isConnected()');
-        return (this._mStatus == 2);
     }
     
     useEvo(args, util) {
@@ -381,6 +422,7 @@ class OzobotEvoBlocks {
         console.log("Lost connection to robot");   
         this.runtime.emit(this.runtime.constructor.PERIPHERAL_DISCONNECTED);
     }
+
 
 
     updatePalette() {
@@ -414,7 +456,8 @@ class OzobotEvoBlocks {
                     // Connected????
                     console.log('Got a bot');
                     console.dir(evoData.bot);
-                    evoData.setupOnConnection();
+                    await evoData.setupOnConnection();
+                    console.log(`Setup Done: ${evoData.name}`)
                     this.updatePalette();
                 }
         
@@ -433,6 +476,7 @@ class OzobotEvoBlocks {
 
     checkTargetForEvo(target) {
         // Return null (if invalid) or bot object otherwise
+        // TODO:  Check for valid evo data / return if none
         return target.evoData
     }
 
@@ -444,6 +488,21 @@ class OzobotEvoBlocks {
         return Math.max(min, Math.min(value, max))
     }
 
+    async tone (args, util) {
+        // TODO: Need to "lock out" / cancel like motion
+
+        // TODO:  Gets some sort of fileState message when done
+        console.log(`tone`);
+        console.dir(args);
+        // Conversion via: http://subsynth.sourceforge.net/midinote2freq.html
+        let freq = 440/32 * 2 **( (Cast.toNumber(args.TONE)-9) / 12 );
+        let duration = Cast.toNumber(args.DURATION)
+        console.log(`freq: ${freq} for ${duration} ms`)
+        const evoData = this.checkTargetForEvo(util.target);
+        await evoData.bot.generateTone(freq, duration, 100);  // Last argument is loudness; Appears to be unused
+
+
+    }
 
     async setLEDs (args, util) {
         console.log(`setLEDs`);
@@ -451,7 +510,7 @@ class OzobotEvoBlocks {
         let ledID = 2**LED_NAMES.indexOf(args.LED);
         // let ledID = 2**this.restrictRange(0,7,Cast.toNumber(args.LED));
         console.log(`LED ID: ${ledID}`);
-  //https://www.codegrepper.com/code-examples/javascript/javascript+convert+color+string+to+rgb
+        // Parse to bin via: https://www.codegrepper.com/code-examples/javascript/javascript+convert+color+string+to+rgb
         var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(args.COLOR);
         if(result){
             var r= parseInt(result[1], 16);
@@ -460,7 +519,7 @@ class OzobotEvoBlocks {
             console.log(r+","+g+","+b);
 
             const evoData = this.checkTargetForEvo(util.target);
-            evoData.bot.setLED(ledID, r, g, b);
+            await evoData.bot.setLED(ledID, r, g, b);
         }         
     }
 
@@ -501,3 +560,18 @@ class OzobotEvoBlocks {
       }      
 }
 module.exports = OzobotEvoBlocks;
+
+
+
+
+/*
+ *  Misc. Notes
+ * 
+    Calling "Say" this.runtime._primitives.looks_say({MESSAGE:"Hello!"},util)
+    Util has to have the target 
+* 
+        this.runtime.emit('SAY', this.runtime._editingTarget, 'say', "Bye");
+
+
+
+ */
