@@ -1,18 +1,18 @@
 require("regenerator-runtime/runtime");
-const Runtime = require('../../engine/runtime');
 
 const ArgumentType = require('../../extension-support/argument-type');
 const BlockType = require('../../extension-support/block-type');
 const formatMessage = require('format-message');
 const Cast = require('../../util/cast');
-const MathUtil = require('../../util/math-util');
-
 
 const OzobotWebBle = require('./ozobot-webble.umd.js');
-const { listenerCount, THREAD_STEP_INTERVAL } = require("../../engine/runtime");
-const { List } = require("immutable");
 
+//const Runtime = require('../../engine/runtime');
+//const MathUtil = require('../../util/math-util');
+//const { listenerCount, THREAD_STEP_INTERVAL } = require("../../engine/runtime");
+//const { List } = require("immutable");
 
+// All Scratch Events
 const allEvents =  ['ANSWER',
                     'BLOCKSINFO_UPDATE',
                     'BLOCKS_NEED_UPDATE',
@@ -71,37 +71,67 @@ const EXTENSION_ID = 'ozobotEvoRobot';
 const STATE_CONNECTED = 1;
 const STATE_DISCONNECTED = 2;
 
-const MOTION_STILL = 1;
-const MOTION_STARTED = 2;
-const MOTION_COMPLETED = 3;
+const MOTION_DONE = 'motion done';
+const AUDIO_DONE = 'audio done';
+
+
 const LED_NAMES = ['Top', 'Far Left', 'Left', 'Center', 'Right', 'Far Right', 'Power Button', 'Back'];
 class EvoData {
+
     constructor(target, blocks) {
         this.bot = null;
         this.state = STATE_DISCONNECTED;
-        this.ozoblocks = blocks
+        this.ozoblocks = blocks;
         this.target = target;  // Scratch target object for this Evo object
         this.didDisconnectHandler = this.didDisconnect.bind(this);
         this.name = '';
         this.pendingOperations = new Map();
+        this.audio_playing = false;
     }
 
-    // By default "resolve" and be done
-    defaultChecker (resolve, reject, d) {
-        console.log('Default checker...');
-        resolve(d);
-        return true;
-    }
-
-    eventCompletionPromise (event, checker = this.defaultChecker) {
+    /**
+     * 
+     * @param {*} event The event to wait for
+     * @param {int} timeout (in ms); null or 0 if none
+     * @returns a promise that will be resolved/rejected when the item is done (the promise will resolve to a return value too)
+     */
+    eventCompletionPromise (event, timeout = null) {
+        // Get a list of any existing handlers for this promise
         const callbacks = this.pendingOperations.get(event) || [];
-        const p = new Promise((resolve, reject) => callbacks.push(d => checker(resolve, reject, d)));
+
+        // Create a timer to trigger the event if needed
+        const timer = timeout ? setTimeout(() => this.completeEvents(event, 'timeout'), timeout) : null;
+        // Create a promise and add it to the list
+        const p = new Promise(resolve => { callbacks.push(resolve); clearTimeout(timer); });
+        // Update the list for the event (to include this new item)
         this.pendingOperations.set(event, callbacks);
+        // Return the promise
         return p;
     }
 
+    /**
+     * Fire anything that's waiting on the specific event
+     * @param {*} name 
+     * @param {*} data 
+     */
+    completeEvents (name, data = null) {
+        // Get and process all pending operations
+        const events = this.pendingOperations.get(name) || [];
+        // Process any completed events...And update list
+        events.forEach(e => e(data));
+        // Remove any pending operations
+        this.pendingOperations.set(name, []);
+    }
+
+    /**
+     * Clear / fire anything that's waiting on an event
+     */
+    clearAllEvents () {
+        this.pendingOperations.forEach((k, v, m) => v());
+    }
+
     // All the things to do when connected to Evo
-    async setupOnConnection() {
+    async setupOnConnection () {
         // Prepare for disconnects
         this.bot.addDisconnectListener(this.didDisconnectHandler);
         await this.bot.stopFile(2, 1); // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
@@ -121,29 +151,27 @@ class EvoData {
         this.state = STATE_CONNECTED;
     }
 
-    completeEvents (name, data = null) {
-        // Get and process all pending operations
-        const events = this.pendingOperations.get(name) || [];
-        // Process any completed events...And update list
-        const updates = [];
-        for (const handler of events) {
-            if (handler(data) === false) {
-                updates.push(handler);
-            } else {
-                console.log('Not complete...');
-            }
-        }
-        // Update still pending
-        this.pendingOperations.set(name, updates);
-    }
 
-    clearEvents() {
-        this.pendingOperations.forEach( (k, v, m) => v() );
-    }
-
-    didRecieveEvent(name, data) {
+    didRecieveEvent (name, data) {
         console.log(`Event ${name}: ${data}`);
         console.dir(data);
+
+        // Deal with meaningful events and "translate" to triggers
+        switch (name) {
+
+        case 'movementFinishedSimple':
+        case 'movementFinishedExtended':
+            this.completeEvents(MOTION_DONE, data);
+            break;
+
+        case 'fileState':
+            // Check for type (129 or 0) and running
+            if ([0, 129].includes(data.fileType) && data.running === false) {
+                this.completeEvents(AUDIO_DONE, data);
+            }
+            break;
+        }
+
         this.completeEvents(name, data);
     }
 
@@ -528,19 +556,7 @@ TODO: Handle events
 
         let expectedTime = duration * 1.2; 
 
-        function checker(resolve, reject, d) {
-            console.dir(d);
-            // Tones either finish as 129 or 0 file types. 
-            value = [0, 129].includes(d.fileType) && d.running===false;
-            console.log(value)
-            if(value) {
-                resolve(d)
-                return true;
-            }
-            return false;
-        }
-
-        let rp = Promise.any([evoData.eventCompletionPromise('fileState', checker), this.timedPromise(expectedTime, true)]);
+        let rp = Promise.any([evoData.eventCompletionPromise(AUDIO_DONE), this.timedPromise(expectedTime, true)]);
 
         await evoData.bot.generateTone(freq, duration, 100);  // Last argument is loudness; Appears to be unused
 
@@ -550,13 +566,10 @@ TODO: Handle events
     async setLEDs (args, util) {
         console.log(`setLEDs`);
         console.dir(args);
-
-        let ledID = 2**LED_NAMES.indexOf(args.LED);
-        // let ledID = 2**this.restrictRange(0,7,Cast.toNumber(args.LED));
+        let ledID = 2**LED_NAMES.indexOf(args.LED); // Convert the index to a bit position (2^index)
         console.log(`LED ID: ${ledID}`);
 
         const color = Cast.toRgbColorObject(args.COLOR);
-
         const evoData = this.checkTargetForEvo(util.target);
         await evoData.bot.setLED(ledID, color.r, color.g, color.b);
     }
@@ -573,7 +586,7 @@ TODO: Handle events
         evoData.completeEvents('movementFinishedSimple');
         let expectedTime = dist / speed * 1000 * 1.2; 
         // Create promises to ensure end (either completion or time)
-        let rp = Promise.any([evoData.eventCompletionPromise('movementFinishedSimple'), this.timedPromise(expectedTime, true)]);
+        let rp = Promise.any([evoData.eventCompletionPromise(MOTION_DONE), this.timedPromise(expectedTime, true)]);
         // Initiate motion
         await evoData.bot.moveForwardBackward(dist, speed);
         return rp;
@@ -591,7 +604,7 @@ TODO: Handle events
         evoData.completeEvents('movementFinishedSimple');
         let expectedTime = degrees / speed * 1000 * 1.2; 
         // Create promises to ensure end (either completion or time)
-        let rp = Promise.any([evoData.eventCompletionPromise('movementFinishedSimple'), this.timedPromise(expectedTime, true)]);
+        let rp = Promise.any([evoData.eventCompletionPromise(MOTION_DONE), this.timedPromise(expectedTime, true)]);
         // Initiate motion
         await evoData.bot.rotate(degrees, speed);
         return rp;
