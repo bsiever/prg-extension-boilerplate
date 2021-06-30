@@ -86,9 +86,16 @@ class EvoData {
         this.pendingOperations = new Map();
     }
 
-    eventCompletionPromise(event) {
-        let callbacks = this.pendingOperations.get(event) || [];
-        let p = new Promise(resolve => callbacks.push(resolve));
+    // By default "resolve" and be done
+    defaultChecker (resolve, reject, d) {
+        console.log('Default checker...');
+        resolve(d);
+        return true;
+    }
+
+    eventCompletionPromise (event, checker = this.defaultChecker) {
+        const callbacks = this.pendingOperations.get(event) || [];
+        const p = new Promise((resolve, reject) => callbacks.push(d => checker(resolve, reject, d)));
         this.pendingOperations.set(event, callbacks);
         return p;
     }
@@ -97,10 +104,9 @@ class EvoData {
     async setupOnConnection() {
         // Prepare for disconnects
         this.bot.addDisconnectListener(this.didDisconnectHandler);
-        await this.bot.stopFile(2,1);  // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
+        await this.bot.stopFile(2, 1); // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
         await this.bot.setMovementNotifications(true);
         this.name = await this.bot.getName();
-        console.log(`Name: ${this.name}`)
         // this.bot.toggleClassroomBehavior(true); // Set classroom behavior (disable spontaneous stuff?)
         // // Disable wandering
         // this.bot.setWanderSettings(false, 0, 0, 0);
@@ -113,15 +119,22 @@ class EvoData {
         }
         this.target.runtime.emit('SAY', this.target, 'think', 'Ready');
         this.state = STATE_CONNECTED;
-        console.log("Done with setupOnConnection")
     }
 
-    completeEvents(name, data=undefined) {
+    completeEvents (name, data = null) {
         // Get and process all pending operations
-        let events = this.pendingOperations.get(name) || [];
-        events.forEach( e => e(data));
-        // Clear them
-        this.pendingOperations.set(name, []);
+        const events = this.pendingOperations.get(name) || [];
+        // Process any completed events...And update list
+        const updates = [];
+        for (const handler of events) {
+            if (handler(data) === false) {
+                updates.push(handler);
+            } else {
+                console.log('Not complete...');
+            }
+        }
+        // Update still pending
+        this.pendingOperations.set(name, updates);
     }
 
     clearEvents() {
@@ -130,7 +143,12 @@ class EvoData {
 
     didRecieveEvent(name, data) {
         console.log(`Event ${name}: ${data}`);
-        this.completeEvents(name);
+        console.dir(data);
+        this.completeEvents(name, data);
+    }
+
+    redrawToolbox() {
+        this.target.runtime.emit("TOOLBOX_EXTENSIONS_NEED_UPDATE");
     }
 
     didDisconnect() {
@@ -141,11 +159,11 @@ class EvoData {
         this.ozoblocks.updatePalette();
 
         this.target.runtime.emit('SAY', this.target, 'say', 'Disconnected');
-        // BSIEVER: Check the below
-        this.target.runtime.emit(this.runtime.constructor.PERIPHERAL_DISCONNECTED);
+        this.redrawToolbox();
 
         // TODO: Stop the script
-        // TODO: May need to redraw menu.  Eh, just do it...
+        //this.target.runtime.emit('STOP_FOR_TARGET');
+
     }
 }
 
@@ -154,7 +172,6 @@ class EvoData {
 class OzobotEvoBlocks {  
 
     constructor (runtime) {
-        console.log("Constructing a OzobotEvoBlocks");
         /**
          * Store this for later communication with the Scratch VM runtime.
          * If this extension is running in a sandbox then `runtime` is an async proxy object.
@@ -499,28 +516,49 @@ TODO: Handle events
         let duration = Cast.toNumber(args.DURATION)
         console.log(`freq: ${freq} for ${duration} ms`)
         const evoData = this.checkTargetForEvo(util.target);
+
+        // Stop running audio
+        await evoData.bot.stopFile(1, 1);  //  fileType 1 is audio; 1 is flush
+        // ERG...That may trigger a "stop"
+
+        // Clear any pending play / waits 
+        evoData.completeEvents('fileState', {fileType:0, running:false});  // Erg....Huh...
+
+        // The above is about clearing blocks
+
+        let expectedTime = duration * 1.2; 
+
+        function checker(resolve, reject, d) {
+            console.dir(d);
+            // Tones either finish as 129 or 0 file types. 
+            value = [0, 129].includes(d.fileType) && d.running===false;
+            console.log(value)
+            if(value) {
+                resolve(d)
+                return true;
+            }
+            return false;
+        }
+
+        let rp = Promise.any([evoData.eventCompletionPromise('fileState', checker), this.timedPromise(expectedTime, true)]);
+
         await evoData.bot.generateTone(freq, duration, 100);  // Last argument is loudness; Appears to be unused
 
-
+        return rp;
     }
 
     async setLEDs (args, util) {
         console.log(`setLEDs`);
         console.dir(args);
+
         let ledID = 2**LED_NAMES.indexOf(args.LED);
         // let ledID = 2**this.restrictRange(0,7,Cast.toNumber(args.LED));
         console.log(`LED ID: ${ledID}`);
-        // Parse to bin via: https://www.codegrepper.com/code-examples/javascript/javascript+convert+color+string+to+rgb
-        var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(args.COLOR);
-        if(result){
-            var r= parseInt(result[1], 16);
-            var g= parseInt(result[2], 16);
-            var b= parseInt(result[3], 16);
-            console.log(r+","+g+","+b);
 
-            const evoData = this.checkTargetForEvo(util.target);
-            await evoData.bot.setLED(ledID, r, g, b);
-        }         
+        const color = Cast.toRgbColorObject(args.COLOR);
+
+        const evoData = this.checkTargetForEvo(util.target);
+        await evoData.bot.setLED(ledID, color.r, color.g, color.b);
     }
 
     async forward (args, util) {
