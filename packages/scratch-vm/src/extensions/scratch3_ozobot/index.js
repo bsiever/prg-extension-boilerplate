@@ -6,11 +6,15 @@ const formatMessage = require('format-message');
 const Cast = require('../../util/cast');
 
 const OzobotWebBle = require('./ozobot-webble.umd.js');
+const { debug } = require("../../util/log");
 
 //const Runtime = require('../../engine/runtime');
 //const MathUtil = require('../../util/math-util');
 //const { listenerCount, THREAD_STEP_INTERVAL } = require("../../engine/runtime");
 //const { List } = require("immutable");
+
+// Set debugging of 
+OZOBOT_BLE_DEBUG = true;
 
 // All Scratch Events
 const allEvents =  ['ANSWER',
@@ -87,7 +91,9 @@ class EvoData {
         this.name = '';
         this.pendingOperations = new Map();
         this.audio_playing = false;
+        this.batteryCheck = null;
     }
+
 
     /**
      * 
@@ -100,9 +106,17 @@ class EvoData {
         const callbacks = this.pendingOperations.get(event) || [];
 
         // Create a timer to trigger the event if needed
-        const timer = timeout ? setTimeout(() => this.completeEvents(event, 'timeout'), timeout) : null;
+        const timer = timeout ? setTimeout(() => { 
+            // console.log(`TIMEOUT ${event} ${this}`); 
+            this.completeEvents(event, 'timeout');
+        }, timeout) : null;
         // Create a promise and add it to the list
-        const p = new Promise(resolve => { callbacks.push(resolve); clearTimeout(timer); });
+        const p = new Promise(resolve => { 
+            callbacks.push(d => {
+                resolve(d);
+                clearTimeout(timer);
+            });
+        });
         // Update the list for the event (to include this new item)
         this.pendingOperations.set(event, callbacks);
         // Return the promise
@@ -130,12 +144,32 @@ class EvoData {
         this.pendingOperations.forEach((k, v, m) => v());
     }
 
+    timedPromise(time) {
+        return Promise(resolve => setTimeout(resolve, time));
+    }
+
     // All the things to do when connected to Evo
     async setupOnConnection () {
         // Prepare for disconnects
+        this.completeEvents(); // Clear all pending events
         this.bot.addDisconnectListener(this.didDisconnectHandler);
         await this.bot.stopFile(2, 1); // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
         await this.bot.setMovementNotifications(true);
+        await this.bot.playFile(1, '01010010', 0);
+        const hwV = await this.bot.hardwareVersion();
+        const firmV = await this.bot.firmwareVersion();
+        console.log(`Hardware Ver: ${hwV};  Firmware: ${firmV}`);
+
+        // TODO: Battery check / monitor
+        // this.batteryCheck = setInterval(async () => {
+        //     console.log("Checking Battery");
+        //     const batteryLevel = await this.bot.batteryLevel();  // Times out after 2s
+        //     console.log(`Battery: ${batteryLevel}`)
+        //     if (batteryLevel < 20) {
+        //         this.target.runtime.emit('SAY', this.target, 'think', 'Low Battery!');
+        //     }
+        // }, 6000);
+        // await this.bot.requestFileState(1);  // Request the state of audio files
         this.name = await this.bot.getName();
         // this.bot.toggleClassroomBehavior(true); // Set classroom behavior (disable spontaneous stuff?)
         // // Disable wandering
@@ -165,8 +199,8 @@ class EvoData {
             break;
 
         case 'fileState':
-            // Check for type (129 or 0) and running
-            if ([0, 129].includes(data.fileType) && data.running === false) {
+            // Check for type (129=UserAudio or 1=Audio, 7=AudioNote, 0=Firmware, 5=AudioSpeex) and running
+            if ([0, 1, 5, 7, 129].includes(data.fileType) && data.running === false) {
                 this.completeEvents(AUDIO_DONE, data);
             }
             break;
@@ -185,10 +219,11 @@ class EvoData {
         this.bot = null;
         this.state = STATE_DISCONNECTED;
         this.ozoblocks.updatePalette();
+        this.completeEvents(); // Clear all pending events
 
         this.target.runtime.emit('SAY', this.target, 'say', 'Disconnected');
         this.redrawToolbox();
-
+        clearInterval(this.batteryCheck)
         // TODO: Stop the script
         //this.target.runtime.emit('STOP_FOR_TARGET');
 
@@ -221,6 +256,8 @@ class OzobotEvoBlocks {
         this.runtime.on('PROJECT_CHANGED', this.projectChanged.bind(this));
         this.runtime.on('TOOLBOX_EXTENSIONS_NEED_UPDATE', this.editingTargetChanged.bind(this));
         this.runtime.on('PROJECT_STOP_ALL', this.stopAll.bind(this));
+
+//        debug(this.useDebugger);  // Trigger debugger if needed
 
 /*
 TODO: Handle events
@@ -322,19 +359,14 @@ TODO: Handle events
                 },
                 '---',
                 {
-                    opcode: 'useEvo',
+                    opcode: 'useDebugger',
                     blockType: BlockType.COMMAND,
                     text: formatMessage({
-                        id: 'useEvo',
-                        default: 'use evo [EVOS]',
-                        description: 'Interact with specific Evo'
+                        id: 'useDebugger',
+                        default: 'use debugger',
+                        description: 'Trigger Chrome Debugger'
                     }),
                     arguments: {
-                        EVOS: {
-                            type: ArgumentType.STRING,
-                            menu: 'EVOS',
-                            defaultValue: 'One'
-                        }
                     }
                 },               
                 {
@@ -424,11 +456,7 @@ TODO: Handle events
 // Disconnect: Clear all events 
 
             ],
-            menus: {
-                EVOS: {
-                    acceptReporters: false,
-                    items: ['One', 'Two', 'Three']
-                }, 
+            menus: { 
                 LEDS: {
                     acceptReporters: false,
                     items: LED_NAMES
@@ -458,9 +486,10 @@ TODO: Handle events
         console.log('isConnected()');
     }
     
-    useEvo(args, util) {
-        console.log("Use Evo Called")    
-        console.dir(args)    
+    useDebugger(args, util) {
+        console.log("Use Debugger Called")    
+        console.dir(args);
+        debugger;
     }
 
     onDeviceDisconnected () {
@@ -546,19 +575,16 @@ TODO: Handle events
         const evoData = this.checkTargetForEvo(util.target);
 
         // Stop running audio
-        await evoData.bot.stopFile(1, 1);  //  fileType 1 is audio; 1 is flush
-        // ERG...That may trigger a "stop"
-
-        // Clear any pending play / waits 
-        evoData.completeEvents('fileState', {fileType:0, running:false});  // Erg....Huh...
-
+        if (evoData.audio_playing) {
+            await evoData.bot.stopFile(1, 1);  //  fileType 1 is audio; 1 is flush
+            // Clear any pending play / waits 
+            evoData.completeEvents(AUDIO_DONE, 'preempted');
+        }
         // The above is about clearing blocks
-
-        let expectedTime = duration * 1.2; 
-
-        let rp = Promise.any([evoData.eventCompletionPromise(AUDIO_DONE), this.timedPromise(expectedTime, true)]);
-
-        await evoData.bot.generateTone(freq, duration, 100);  // Last argument is loudness; Appears to be unused
+        const rp = evoData.eventCompletionPromise(AUDIO_DONE, duration).then(()=>{evoData.audio_playing = false;});
+        evoData.audio_playing = true;
+        
+        await evoData.bot.generateTone(freq, duration, 200);  // Last argument is loudness; Appears to be unused
 
         return rp;
     }
@@ -584,9 +610,9 @@ TODO: Handle events
 
         // End any other motion in progress 
         evoData.completeEvents('movementFinishedSimple');
-        let expectedTime = dist / speed * 1000 * 1.2; 
+        let expectedTime = dist / speed * 1000 * 1.2;
         // Create promises to ensure end (either completion or time)
-        let rp = Promise.any([evoData.eventCompletionPromise(MOTION_DONE), this.timedPromise(expectedTime, true)]);
+        let rp = evoData.eventCompletionPromise(MOTION_DONE, expectedTime);
         // Initiate motion
         await evoData.bot.moveForwardBackward(dist, speed);
         return rp;
@@ -602,9 +628,9 @@ TODO: Handle events
 
         // End any other motion in progress 
         evoData.completeEvents('movementFinishedSimple');
-        let expectedTime = degrees / speed * 1000 * 1.2; 
+        let expectedTime = degrees / speed * 1000 * 1.2;
         // Create promises to ensure end (either completion or time)
-        let rp = Promise.any([evoData.eventCompletionPromise(MOTION_DONE), this.timedPromise(expectedTime, true)]);
+        let rp = evoData.eventCompletionPromise(MOTION_DONE, expectedTime);
         // Initiate motion
         await evoData.bot.rotate(degrees, speed);
         return rp;

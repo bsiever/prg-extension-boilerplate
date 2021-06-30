@@ -327,7 +327,7 @@
     class EVOCommands extends AEVOCommands_1.AEVOCommands {
         constructor() {
             super();
-            this.commands = {
+            this.commands = { // BSIEVER: Added notes and details on missing commands
                 moveWheels: 0x40,
                 moveForwardBackward: 0x41,
                 rotate: 0x42,
@@ -339,10 +339,15 @@
                 calibrate: 0x48,
                 turnEVOOff: 0x49,
                 updateFirmware: 0x4a,
-                requestSummary: 0x4b,
+                requestSummary: 0x4b,  // Usage Statistic
+                // RWSkindData is 4c
+                // ResetUsageStatiscic is 4d
+                // PlaySynthesizer is 0x4e
                 generateTone: 0x4f,
                 stopFile: 0x50,
                 requestFileState: 0x51,
+                // SetNextIntersectionDecition is 0x53
+                // SetPersistentRegisters is 54
                 setLineFollowingSpeed: 0x60,
                 toggleIgnoreColorCodes: 0x61,
                 setRandomSeed: 0x62,
@@ -351,15 +356,22 @@
                 setWanderSettings: 0x65,
                 setIdleSettings: 0x66,
                 setAutoOffTimeSettings: 0x67,
+                // SetReporting is 0x68 // CHECK THIS!
+                // SetEvoHandoffData is 0x69
                 setMovementNotifications: 0x6a,
                 setMotorPower: 0x6b,
                 toggleChildAdultAccount: 0x6c,
                 toggleSensorLogging: 0x6d,
                 setSetting: 0x6e,
                 getSettingRequest: 0x6f,
+                // SetIRMessage is 70
                 setRelativePositionNotificationPeriod: 0x73,
                 getValueRequest: 0x74,
+                // TestCalibration d0
                 requestCallibration: 0xd3
+                // SetPIDValues f0
+                // ReadPIDValues f1
+                // PlayBehavior 12c
             };
         }
         getCharacteristicCommon() {
@@ -591,16 +603,26 @@
                 lineFound: 0x13,
                 intersectionDetected: 0x14,
                 obstacle: 0x15,
+                evoEncountered: 0x16, // BSIEVER
+                heightChange: 0x17, // BSIEVER
+                smartSkinChange: 0x18, // BSIEVER
+                smartSkinDataResponse: 0x19, // BSIEVER
                 movementFinishedSimple: 0x1a,
                 movementFinishedExtended: 0x1b,
                 summary: 0x1c,
                 charger: 0x21,
                 EVOTurnOff: 0x22,
                 fileState: 0x23,
+                surfaceChange: 0x24, // BSIEVER
+                surfaceProximityChanged: 0x25, // BSIEVER 
+                irMessage: 0x26, // BSIEVER
                 getSettingResponse: 0x27,
                 relativePosition: 0x31,
                 getValueResponse: 0x32,
-                calibrationResponse: 0xd0
+                OID: 0x3f, // BSIEVER
+                calibrationResponse: 0xd0,
+                errorCode: 0xe0, // BSIEVER
+                pidValues: 0xf0
             };
             this.subscribed = {};
         }
