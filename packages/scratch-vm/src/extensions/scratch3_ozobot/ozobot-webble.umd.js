@@ -342,7 +342,7 @@
                 requestSummary: 0x4b,  // Usage Statistic
                 // RWSkindData is 4c
                 // ResetUsageStatiscic is 4d
-                // PlaySynthesizer is 0x4e
+                // PlaySynthesizer is 0x4e Unused
                 generateTone: 0x4f,
                 stopFile: 0x50,
                 requestFileState: 0x51,
@@ -1819,13 +1819,23 @@
         /**
          * @return Battery level in % (0..100).
          */
+        // BSIEVER:  Updated to use characteristic rather than read a value
+        // batteryLevel() {
+        //     return __awaiter(this, void 0, void 0, function* () {
+        //         const batteryLevel = yield this.getValue(Notifications.GetValueIdentifier.RemainingBattery, 2000);
+        //         if (batteryLevel.kind == Notifications.GetValueIdentifier.RemainingBattery) {
+        //             return Math.min(batteryLevel.value, 100);
+        //         }
+        //         throw new Error('Battery level is not accessible');
+        //     });
+        // }
         batteryLevel() {
             return __awaiter(this, void 0, void 0, function* () {
-                const batteryLevel = yield this.getValue(Notifications.GetValueIdentifier.RemainingBattery, 2000);
-                if (batteryLevel.kind == Notifications.GetValueIdentifier.RemainingBattery) {
-                    return Math.min(batteryLevel.value, 100);
-                }
-                throw new Error('Battery level is not accessible');
+                const buffer = yield this.device.read(this.commonCharacteristic.batteryLevel);
+                const data = new DataView(buffer);
+                const batteryLevel = data.getUint8(0);
+                return batteryLevel;
+
             });
         }
         hardwareVersion() {

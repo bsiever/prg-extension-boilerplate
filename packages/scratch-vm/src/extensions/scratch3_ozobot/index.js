@@ -75,14 +75,14 @@ const EXTENSION_ID = 'ozobotEvoRobot';
 const STATE_CONNECTED = 1;
 const STATE_DISCONNECTED = 2;
 
+// Event Tags (for "replies" from Ozobot)
 const MOTION_DONE = 'motion done';
 const AUDIO_DONE = 'audio done';
-
 
 const LED_NAMES = ['Top', 'Far Left', 'Left', 'Center', 'Right', 'Far Right', 'Power Button', 'Back'];
 class EvoData {
 
-    constructor(target, blocks) {
+    constructor (target, blocks) {
         this.bot = null;
         this.state = STATE_DISCONNECTED;
         this.ozoblocks = blocks;
@@ -104,16 +104,20 @@ class EvoData {
     eventCompletionPromise (event, timeout = null) {
         // Get a list of any existing handlers for this promise
         const callbacks = this.pendingOperations.get(event) || [];
-
+        console.log(`Timeout: ${timeout}`);
         // Create a timer to trigger the event if needed
-        const timer = timeout ? setTimeout(() => { 
-            // console.log(`TIMEOUT ${event} ${this}`); 
+        const onTimeout = () => { 
+            console.log(`TIMEOUT ${event} ${this}`); 
             this.completeEvents(event, 'timeout');
-        }, timeout) : null;
+        };
+        const timer = timeout !== null ? window.setTimeout(onTimeout, timeout) : null;
+        console.log(`Timer: ${timer}`)
         // Create a promise and add it to the list
         const p = new Promise(resolve => { 
             callbacks.push(d => {
+                console.log(`${event} finished with event`);
                 resolve(d);
+                console.log(`clearing timer: ${timer}`)
                 clearTimeout(timer);
             });
         });
@@ -156,19 +160,19 @@ class EvoData {
         await this.bot.stopFile(2, 1); // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
         await this.bot.setMovementNotifications(true);
         await this.bot.playFile(1, '01010010', 0);
-        const hwV = await this.bot.hardwareVersion();
+        const hwV = await this.bot.hardwareVersion();  // Contains .color and .colorName (0 black; 1 white)
         const firmV = await this.bot.firmwareVersion();
         console.log(`Hardware Ver: ${hwV};  Firmware: ${firmV}`);
 
-        // TODO: Battery check / monitor
-        // this.batteryCheck = setInterval(async () => {
-        //     console.log("Checking Battery");
-        //     const batteryLevel = await this.bot.batteryLevel();  // Times out after 2s
-        //     console.log(`Battery: ${batteryLevel}`)
-        //     if (batteryLevel < 20) {
-        //         this.target.runtime.emit('SAY', this.target, 'think', 'Low Battery!');
-        //     }
-        // }, 6000);
+        // Battery check / monitor
+        this.batteryCheck = setInterval(async () => {
+            console.log("Checking Battery");
+            const batteryLevel = await this.bot.batteryLevel(); 
+            console.log(`Battery: ${batteryLevel}`)
+            if (batteryLevel < 20) {
+                this.target.runtime.emit('SAY', this.target, 'think', 'Low Battery!');
+            }
+        }, 60000);
         // await this.bot.requestFileState(1);  // Request the state of audio files
         this.name = await this.bot.getName();
         // this.bot.toggleClassroomBehavior(true); // Set classroom behavior (disable spontaneous stuff?)
@@ -223,7 +227,7 @@ class EvoData {
 
         this.target.runtime.emit('SAY', this.target, 'say', 'Disconnected');
         this.redrawToolbox();
-        clearInterval(this.batteryCheck)
+        clearInterval(this.batteryCheck);
         // TODO: Stop the script
         //this.target.runtime.emit('STOP_FOR_TARGET');
 
@@ -445,9 +449,27 @@ TODO: Handle events
                             defaultValue: 1000
                         }
                     }
+                },
+                {
+                    opcode: 'whenObstacle',              // Method to run
+                    blockType: BlockType.HAT,  // Type of Block
+                    text: formatMessage({
+                        id: 'ozobotevoblocks.whenObstacle',
+                        default: 'when obstacle',
+                        description: 'Play the given tone for the duration'
+                    }),
+                    arguments: {
+                        // TONE: {
+                        //     type:ArgumentType.NOTE,
+                        //     defaultValue: 84
+                        // },
+                        // DURATION: {
+                        //     type:ArgumentType.NUMBER,
+                        //     defaultValue: 1000
+                        // }
+                    }
                 }
-
-// TODO:  Notes, Sounds, MotorPower
+// TODO:  Sounds, MotorPower
 // TODO: Events (lines, colors, obstacles, Button?)
 // TODO: (Maybe):  IR Messages???
 
@@ -551,7 +573,9 @@ TODO: Handle events
     checkTargetForEvo(target) {
         // Return null (if invalid) or bot object otherwise
         // TODO:  Check for valid evo data / return if none
-        return target.evoData
+        if ('evoData' in target === false || target.evoData.state !== STATE_CONNECTED)
+            return null;
+        return target.evoData;
     }
 
     timedPromise(time, fail = false) {
@@ -563,17 +587,13 @@ TODO: Handle events
     }
 
     async tone (args, util) {
-        // TODO: Need to "lock out" / cancel like motion
-
-        // TODO:  Gets some sort of fileState message when done
         console.log(`tone`);
         console.dir(args);
-        // Conversion via: http://subsynth.sourceforge.net/midinote2freq.html
-        let freq = 440/32 * 2 **( (Cast.toNumber(args.TONE)-9) / 12 );
-        let duration = Cast.toNumber(args.DURATION)
-        console.log(`freq: ${freq} for ${duration} ms`)
-        const evoData = this.checkTargetForEvo(util.target);
 
+        const evoData = this.checkTargetForEvo(util.target);
+        if (evoData === null) {
+            return;
+        }
         // Stop running audio
         if (evoData.audio_playing) {
             await evoData.bot.stopFile(1, 1);  //  fileType 1 is audio; 1 is flush
@@ -581,22 +601,27 @@ TODO: Handle events
             evoData.completeEvents(AUDIO_DONE, 'preempted');
         }
         // The above is about clearing blocks
-        const rp = evoData.eventCompletionPromise(AUDIO_DONE, duration).then(()=>{evoData.audio_playing = false;});
+        // Conversion via: http://subsynth.sourceforge.net/midinote2freq.html
+        let freq = 440 / 32 * 2 ** ((Cast.toNumber(args.TONE) - 9) / 12);
+        let duration = Cast.toNumber(args.DURATION);
+        console.log(`freq: ${freq} for ${duration} ms`);
+        const rp = evoData.eventCompletionPromise(AUDIO_DONE, duration).then(() => {evoData.audio_playing = false;});
         evoData.audio_playing = true;
-        
         await evoData.bot.generateTone(freq, duration, 200);  // Last argument is loudness; Appears to be unused
-
         return rp;
     }
 
     async setLEDs (args, util) {
         console.log(`setLEDs`);
         console.dir(args);
+        const evoData = this.checkTargetForEvo(util.target);
+        if (evoData === null) {
+            return;
+        }
+
         let ledID = 2**LED_NAMES.indexOf(args.LED); // Convert the index to a bit position (2^index)
         console.log(`LED ID: ${ledID}`);
-
         const color = Cast.toRgbColorObject(args.COLOR);
-        const evoData = this.checkTargetForEvo(util.target);
         await evoData.bot.setLED(ledID, color.r, color.g, color.b);
     }
 
@@ -604,41 +629,56 @@ TODO: Handle events
         console.log(`forward`);
         console.dir(args);
         const evoData = this.checkTargetForEvo(util.target);
-        const dist = this.restrictRange(-1500, 1500, Cast.toNumber(args.DISTANCE));
+        if (evoData === null) {
+            return;
+        }        const dist = this.restrictRange(-1500, 1500, Cast.toNumber(args.DISTANCE));
         const speed =  this.restrictRange(15, 300, Cast.toNumber(args.SPEED));
         console.log(`Sending dist: ${dist} and speed ${speed}`);
 
-        // End any other motion in progress 
-        evoData.completeEvents('movementFinishedSimple');
-        let expectedTime = dist / speed * 1000 * 1.2;
+        // End any other motion in progress
+       // evoData.completeEvents(MOTION_DONE);
+        let expectedTime = dist / speed * 1000 * 5;
+        console.log(`Expected time: ${expectedTime}`);
         // Create promises to ensure end (either completion or time)
         let rp = evoData.eventCompletionPromise(MOTION_DONE, expectedTime);
         // Initiate motion
         await evoData.bot.moveForwardBackward(dist, speed);
         return rp;
-      }
+    }
 
-      async rotate (args, util) {
+    async rotate (args, util) {
         console.log(`rotate`);
         console.dir(args);
         const evoData = this.checkTargetForEvo(util.target);
+        if (evoData === null) {
+            return;
+        }
         const degrees = Cast.toNumber(args.DEGREES);
         const speed =  this.restrictRange(15, 600, Cast.toNumber(args.SPEED));
         console.log(`Sending degrees: ${degrees} and speed ${speed}`);
 
-        // End any other motion in progress 
-        evoData.completeEvents('movementFinishedSimple');
-        let expectedTime = degrees / speed * 1000 * 1.2;
+        // End any other motion in progress
+        // evoData.completeEvents(MOTION_DONE);
+        let expectedTime = degrees / speed * 1000 * 5;
+        console.log(`Expected time: ${expectedTime}`);
         // Create promises to ensure end (either completion or time)
         let rp = evoData.eventCompletionPromise(MOTION_DONE, expectedTime);
         // Initiate motion
         await evoData.bot.rotate(degrees, speed);
+
         return rp;
-      }      
+    }      
+
+    whenObstacle (args, util) {
+        console.log(`whenObstacle check ${util.thread.topBlock}`);
+        if("value" in this == false) 
+            this.value = true;
+        else
+            this.value = !this.value;
+        return this.value;
+    }
 }
 module.exports = OzobotEvoBlocks;
-
-
 
 
 /*
@@ -651,4 +691,46 @@ module.exports = OzobotEvoBlocks;
 
 
 
+                surfaceColorChange: 0x10,
+                lineColorChange: 0x11,
+                colorCodeDetected: 0x12,
+                lineFound: 0x13,
+                intersectionDetected: 0x14,
+                obstacle: 0x15,
+                evoEncountered: 0x16, // BSIEVER
+                heightChange: 0x17, // BSIEVER
+                smartSkinChange: 0x18, // BSIEVER
+                smartSkinDataResponse: 0x19, // BSIEVER
+                charger: 0x21,
+                relativePosition: 0x31,
+                EVOTurnOff: 0x22,
+                fileState: 0x23,
+                surfaceChange: 0x24, // BSIEVER
+                surfaceProximityChanged: 0x25, // BSIEVER 
+                irMessage: 0x26, // BSIEVER
+                getSettingResponse: 0x27,
+
+                movementFinishedSimple: 0x1a,
+                movementFinishedExtended: 0x1b,
+                summary: 0x1c,
+                getValueResponse: 0x32,
+                OID: 0x3f, // BSIEVER
+                calibrationResponse: 0xd0,
+                errorCode: 0xe0, // BSIEVER
+                pidValues: 0xf0
+
+
+Block sets:
+    util.thread.topBlock  (ID of top block in stack???)
+
+    
+Costumes / Images:
+    1. Include connected / disconnected 
+    2. Include top light 
+    3. Include battery indicator 
+
+
+ Startup:
+    Add autooff
+    Disable any wierd stuff / stop all activities?   
  */
