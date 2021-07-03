@@ -156,13 +156,20 @@ class EvoData {
     async setupOnConnection () {
         // Prepare for disconnects
         this.completeEvents(); // Clear all pending events
+console.log(1)
         this.bot.addDisconnectListener(this.didDisconnectHandler);
+        console.log(2)
         await this.bot.stopFile(2, 1); // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
+        console.log(3)
         await this.bot.setMovementNotifications(true);
+        console.log(4)
         await this.bot.playFile(1, '01010010', 0);
-        const hwV = await this.bot.hardwareVersion();  // Contains .color and .colorName (0 black; 1 white)
-        const firmV = await this.bot.firmwareVersion();
-        console.log(`Hardware Ver: ${hwV};  Firmware: ${firmV}`);
+        console.log(5)
+//        const hwV = await this.bot.hardwareVersion();  // Contains .color and .colorName (0 black; 1 white)
+        console.log(6)
+//        const firmV = await this.bot.firmwareVersion();
+        console.log(7)
+  //      console.log(`Hardware Ver: ${hwV};  Firmware: ${firmV}`);
 
         // Battery check / monitor
         this.batteryCheck = setInterval(async () => {
@@ -185,6 +192,7 @@ class EvoData {
             console.log(`Subscribing to ${event} with value ${value}`);
             this.bot.subscribeCommand(event, this.didRecieveEvent.bind(this, event));
         }
+        console.log(8)
         this.target.runtime.emit('SAY', this.target, 'think', 'Ready');
         this.state = STATE_CONNECTED;
     }
@@ -345,8 +353,8 @@ TODO: Handle events
             id: EXTENSION_ID,
             name: formatMessage({
                 id: 'ozobotevoRobot',
-                default: 'Ozobot Evo Robot Blocks',
-                description: 'Extension to communicate with Ozobot Evo robot.'
+                default: 'Ozobot Evo Blocks',
+                description: 'Extension to communicate with Ozobot Evo.'
             }),
             showStatusButton: false,  // The "!" status button used to search for bots in microbit
             blockIconURI: blockIconURI,
@@ -547,18 +555,20 @@ TODO: Handle events
                 evoData.bot = await this.ble.OzobotEvoWebBLE.requestDevice([{namePrefix: 'Ozo'}]);
                 if (evoData.bot === null) {
                     // Not connected??
-                    console.log('NOT Got a bot')
+                    console.log('NOT Got a bot');
                 } else {
                     // Connected????
                     console.log('Got a bot');
                     console.dir(evoData.bot);
                     await evoData.setupOnConnection();
-                    console.log(`Setup Done: ${evoData.name}`)
+                    console.log(`Setup Done: ${evoData.name}`);
                     this.updatePalette();
                 }
         
             } catch(err) {
-                console.log("Error / no connection.")
+                console.dir(err);
+                console.log('Error / no connection.');
+                await evoData.bot.device.disconnect();
             }
     
         } else if (evoData.state === STATE_CONNECTED) {

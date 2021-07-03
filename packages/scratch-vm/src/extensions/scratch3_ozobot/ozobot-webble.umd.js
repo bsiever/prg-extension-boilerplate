@@ -1595,7 +1595,8 @@
         // BSIEVER: Added
         removeDisconnectListener(callback) {
             this.device.removeDisconnectListener(callback);
-        }        /**
+        }
+        /**
          * General subscribe function which also starts notifications on the characteristics.
          */
         subscribe() {
@@ -1819,25 +1820,25 @@
         /**
          * @return Battery level in % (0..100).
          */
+        batteryLevel() {
+            return __awaiter(this, void 0, void 0, function* () {
+                const batteryLevel = yield this.getValue(Notifications.GetValueIdentifier.RemainingBattery, 2000);
+                if (batteryLevel.kind == Notifications.GetValueIdentifier.RemainingBattery) {
+                    return Math.min(batteryLevel.value, 100);
+                }
+                throw new Error('Battery level is not accessible');
+            });
+        }
         // BSIEVER:  Updated to use characteristic rather than read a value
         // batteryLevel() {
         //     return __awaiter(this, void 0, void 0, function* () {
-        //         const batteryLevel = yield this.getValue(Notifications.GetValueIdentifier.RemainingBattery, 2000);
-        //         if (batteryLevel.kind == Notifications.GetValueIdentifier.RemainingBattery) {
-        //             return Math.min(batteryLevel.value, 100);
-        //         }
-        //         throw new Error('Battery level is not accessible');
+        //         const buffer = yield this.device.read(this.commonCharacteristic.batteryLevel);
+        //         const data = new DataView(buffer);
+        //         const batteryLevel = data.getUint8(0);
+        //         return batteryLevel;
+
         //     });
         // }
-        batteryLevel() {
-            return __awaiter(this, void 0, void 0, function* () {
-                const buffer = yield this.device.read(this.commonCharacteristic.batteryLevel);
-                const data = new DataView(buffer);
-                const batteryLevel = data.getUint8(0);
-                return batteryLevel;
-
-            });
-        }
         hardwareVersion() {
             return __awaiter(this, void 0, void 0, function* () {
                 const buffer = yield this.device.read(this.commonCharacteristic.hardwareRevision);
