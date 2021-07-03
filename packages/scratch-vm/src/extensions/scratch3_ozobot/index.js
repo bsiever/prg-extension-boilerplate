@@ -636,8 +636,8 @@ TODO: Handle events
         console.log(`Sending dist: ${dist} and speed ${speed}`);
 
         // End any other motion in progress
-       // evoData.completeEvents(MOTION_DONE);
-        let expectedTime = dist / speed * 1000 * 5;
+        // evoData.completeEvents(MOTION_DONE);
+        let expectedTime = dist / speed * 1000 * 1.3 + 1000; // Timeout needs to be way past when response should be received
         console.log(`Expected time: ${expectedTime}`);
         // Create promises to ensure end (either completion or time)
         let rp = evoData.eventCompletionPromise(MOTION_DONE, expectedTime);
@@ -659,7 +659,7 @@ TODO: Handle events
 
         // End any other motion in progress
         // evoData.completeEvents(MOTION_DONE);
-        let expectedTime = degrees / speed * 1000 * 5;
+        let expectedTime = degrees / speed * 1000 * 1.3 + 1000;
         console.log(`Expected time: ${expectedTime}`);
         // Create promises to ensure end (either completion or time)
         let rp = evoData.eventCompletionPromise(MOTION_DONE, expectedTime);
