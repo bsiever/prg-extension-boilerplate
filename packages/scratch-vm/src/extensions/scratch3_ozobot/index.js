@@ -6,6 +6,7 @@ const formatMessage = require('format-message');
 const Cast = require('../../util/cast');
 
 const OzobotWebBle = require('./ozobot-webble.umd.js');
+const OzobotConstants = require('./ozobot-constants.js');
 const { debug } = require("../../util/log");
 
 //const Runtime = require('../../engine/runtime');
@@ -156,36 +157,32 @@ class EvoData {
     async setupOnConnection () {
         // Prepare for disconnects
         this.completeEvents(); // Clear all pending events
-console.log(1)
         this.bot.addDisconnectListener(this.didDisconnectHandler);
-        console.log(2)
-        await this.bot.stopFile(2, 1); // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
-        console.log(3)
+        await this.bot.stopFile(OzobotConstants.EvoFileTypes.BLOCKLY, true); // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
         await this.bot.setMovementNotifications(true);
-        console.log(4)
         await this.bot.playFile(1, '01010010', 0);
-        console.log(5)
-//        const hwV = await this.bot.hardwareVersion();  // Contains .color and .colorName (0 black; 1 white)
-        console.log(6)
-//        const firmV = await this.bot.firmwareVersion();
-        console.log(7)
-  //      console.log(`Hardware Ver: ${hwV};  Firmware: ${firmV}`);
+        const hwV = await this.bot.hardwareVersion();  // Contains .color and .colorName (0 black; 1 white)
+        const firmV = await this.bot.firmwareVersion();
+        console.log(`Hardware Ver: ${hwV};  Firmware: ${firmV}`);
 
-        // Battery check / monitor
+        // Battery check / monitor (1x per min)
         this.batteryCheck = setInterval(async () => {
-            console.log("Checking Battery");
             const batteryLevel = await this.bot.batteryLevel(); 
             console.log(`Battery: ${batteryLevel}`)
             if (batteryLevel < 20) {
                 this.target.runtime.emit('SAY', this.target, 'think', 'Low Battery!');
             }
         }, 60000);
+
+        // Set all ligths off 
+        await this.bot.setLED(255, 0, 0, 0);
+
         // await this.bot.requestFileState(1);  // Request the state of audio files
         this.name = await this.bot.getName();
-        // this.bot.toggleClassroomBehavior(true); // Set classroom behavior (disable spontaneous stuff?)
+        await this.bot.toggleClassroomBehavior(true); // Set classroom behavior (disable spontaneous stuff?)
         // // Disable wandering
-        // this.bot.setWanderSettings(false, 0, 0, 0);
-        // this.bot.setAutoOffTimeSettings(600); // 5 min?
+        // await this.bot.setWanderSettings(false, 0, 0, 0);
+        // await this.bot.setAutoOffTimeSettings(600); // 5 min?
  
         // TODO / Debugging Log all event notifications
         for (const [event, value] of Object.entries(this.bot.commandsNotifications.notifications)) {
@@ -211,8 +208,11 @@ console.log(1)
             break;
 
         case 'fileState':
+            console.log("File State")
             // Check for type (129=UserAudio or 1=Audio, 7=AudioNote, 0=Firmware, 5=AudioSpeex) and running
-            if ([0, 1, 5, 7, 129].includes(data.fileType) && data.running === false) {
+            // What's 255 == Tone????
+            if ([0, 1, 5, 7, 129, 255].includes(data.fileType) && data.running === false) {
+                console.log('Audio Done')
                 this.completeEvents(AUDIO_DONE, data);
             }
             break;
@@ -401,6 +401,29 @@ TODO: Handle events
                     }
                 },
                 {
+                    opcode: 'circle',              // Method to run
+                    blockType: BlockType.COMMAND,  // Type of Block
+                    text: formatMessage({
+                        id: 'ozobotevoblocks.circle',
+                        default: 'move in a circle [RADIUS] mm radius for [DEGREES] degrees at [SPEED] mm/s',
+                        description: 'Rotate a given number of degrees at speed [15, 85]'
+                    }),
+                    arguments: {
+                        RADIUS: {
+                            type:ArgumentType.NUMBER,
+                            defaultValue: 100
+                        },
+                        DEGREES: {
+                            type:ArgumentType.NUMBER,
+                            defaultValue: 90
+                        },
+                        SPEED: {
+                            type:ArgumentType.NUMBER,
+                            defaultValue: 50
+                        }
+                    }
+                },
+                {
                     opcode: 'rotate',              // Method to run
                     blockType: BlockType.COMMAND,  // Type of Block
                     text: formatMessage({
@@ -475,6 +498,21 @@ TODO: Handle events
                         //     type:ArgumentType.NUMBER,
                         //     defaultValue: 1000
                         // }
+                    }
+                },
+                {
+                    opcode: 'whenSomething',              // Method to run
+                    blockType: BlockType.HAT,  // Type of Block
+                    text: formatMessage({
+                        id: 'ozobotevoblocks.whenSomething',
+                        default: 'when [DURATION] do something',
+                        description: 'Do something when something'
+                    }),
+                    arguments: {
+                        DURATION: {
+                            type:ArgumentType.NUMBER,
+                            defaultValue: 1000
+                        }
                     }
                 }
 // TODO:  Sounds, MotorPower
@@ -612,10 +650,11 @@ TODO: Handle events
         }
         // The above is about clearing blocks
         // Conversion via: http://subsynth.sourceforge.net/midinote2freq.html
-        let freq = 440 / 32 * 2 ** ((Cast.toNumber(args.TONE) - 9) / 12);
-        let duration = Cast.toNumber(args.DURATION);
+        const freq = 440 / 32 * 2 ** ((Cast.toNumber(args.TONE) - 9) / 12);
+        const duration = Cast.toNumber(args.DURATION);
+        const timeout = duration + 1000;
         console.log(`freq: ${freq} for ${duration} ms`);
-        const rp = evoData.eventCompletionPromise(AUDIO_DONE, duration).then(() => {evoData.audio_playing = false;});
+        const rp = evoData.eventCompletionPromise(AUDIO_DONE, timeout).then(() => {evoData.audio_playing = false;});
         evoData.audio_playing = true;
         await evoData.bot.generateTone(freq, duration, 200);  // Last argument is loudness; Appears to be unused
         return rp;
@@ -641,7 +680,8 @@ TODO: Handle events
         const evoData = this.checkTargetForEvo(util.target);
         if (evoData === null) {
             return;
-        }        const dist = this.restrictRange(-1500, 1500, Cast.toNumber(args.DISTANCE));
+        }
+        const dist = this.restrictRange(-1500, 1500, Cast.toNumber(args.DISTANCE));
         const speed =  this.restrictRange(15, 300, Cast.toNumber(args.SPEED));
         console.log(`Sending dist: ${dist} and speed ${speed}`);
 
@@ -653,6 +693,30 @@ TODO: Handle events
         let rp = evoData.eventCompletionPromise(MOTION_DONE, expectedTime);
         // Initiate motion
         await evoData.bot.moveForwardBackward(dist, speed);
+        return rp;
+    }
+
+    async circle (args, util) {
+        console.log(`circle`);
+        console.dir(args);
+        const evoData = this.checkTargetForEvo(util.target);
+        if (evoData === null) {
+            return;
+        }       
+        const radius = this.restrictRange(-1500, 1500, Cast.toNumber(args.RADIUS));
+        const degrees =  this.restrictRange(-360, 360, Cast.toNumber(args.SPEED));
+        const speed =  this.restrictRange(15, 300, Cast.toNumber(args.SPEED));
+        console.log(`Sending radius: ${radius}, degrees: ${degrees} and speed ${speed}`);
+
+        // End any other motion in progress
+        // evoData.completeEvents(MOTION_DONE);
+        const dist = 2 * 3.14 * radius * degrees / 360;
+        let expectedTime = dist / speed * 1000 * 1.3 + 1000; // Timeout needs to be way past when response should be received
+        console.log(`Expected time: ${expectedTime}`);
+        // Create promises to ensure end (either completion or time)
+        let rp = evoData.eventCompletionPromise(MOTION_DONE, expectedTime);
+        // Initiate motion
+        await evoData.bot.circle(radius, degrees, speed);
         return rp;
     }
 
@@ -743,4 +807,16 @@ Costumes / Images:
  Startup:
     Add autooff
     Disable any wierd stuff / stop all activities?   
- */
+
+
+    Classroom Mode: Disables spontaneous crap 
+
+    getValue() exists in newer firmware (upgrade all bots)
+
+    getValue(4) gets the RGB color from the sensor!!!
+
+
+
+    Default project data: ./packages/scratch-gui/src/lib/default-project/e6ddc55a6ddd9cc9d84fe0b4c21e016f.svg
+
+    */

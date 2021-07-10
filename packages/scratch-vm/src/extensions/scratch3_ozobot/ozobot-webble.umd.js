@@ -346,7 +346,7 @@
                 generateTone: 0x4f,
                 stopFile: 0x50,
                 requestFileState: 0x51,
-                // SetNextIntersectionDecition is 0x53
+                // SetNextIntersectionDescion is 0x53
                 // SetPersistentRegisters is 54
                 setLineFollowingSpeed: 0x60,
                 toggleIgnoreColorCodes: 0x61,
@@ -577,8 +577,6 @@
 
     var EVOCommandsNotifications_1 = createCommonjsModule(function (module, exports) {
     Object.defineProperty(exports, "__esModule", { value: true });
-
-
 
     var Intersection;
     (function (Intersection) {
@@ -1829,16 +1827,6 @@
                 throw new Error('Battery level is not accessible');
             });
         }
-        // BSIEVER:  Updated to use characteristic rather than read a value
-        // batteryLevel() {
-        //     return __awaiter(this, void 0, void 0, function* () {
-        //         const buffer = yield this.device.read(this.commonCharacteristic.batteryLevel);
-        //         const data = new DataView(buffer);
-        //         const batteryLevel = data.getUint8(0);
-        //         return batteryLevel;
-
-        //     });
-        // }
         hardwareVersion() {
             return __awaiter(this, void 0, void 0, function* () {
                 const buffer = yield this.device.read(this.commonCharacteristic.hardwareRevision);
