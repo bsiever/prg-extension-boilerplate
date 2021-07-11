@@ -4,13 +4,15 @@ const ArgumentType = require('../../extension-support/argument-type');
 const BlockType = require('../../extension-support/block-type');
 const formatMessage = require('format-message');
 const Cast = require('../../util/cast');
+const MathUtil = require('../../util/math-util');
+const RenderedTarget = require('../../sprites/rendered-target');
+const StageLayering = require('../../engine/stage-layering');
 
 const OzobotWebBle = require('./ozobot-webble.umd.js');
 const OzobotConstants = require('./ozobot-constants.js');
 const { debug } = require("../../util/log");
 
 //const Runtime = require('../../engine/runtime');
-//const MathUtil = require('../../util/math-util');
 //const { listenerCount, THREAD_STEP_INTERVAL } = require("../../engine/runtime");
 //const { List } = require("immutable");
 
@@ -66,6 +68,15 @@ const allEvents =  ['ANSWER',
                     'VISUAL_REPORT',
                     'targetWasCreated',
                     'targetWasRemoved'];
+
+
+/*
+TODOs:
+targetWasRemoved:  Check for status skin and remove if needed 
+"STOP" things:  Stop all blocks / events. 
+Ozobot icons (overhead).
+
+*/
 
 // Icon is an edit of: https://games.ozoblockly.com/shapetracer/sources/classroom-evo-connected.svg
 // Encoded via: https://onlinepngtools.com/convert-png-to-base64
@@ -161,9 +172,16 @@ class EvoData {
         await this.bot.stopFile(OzobotConstants.EvoFileTypes.BLOCKLY, true); // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
         await this.bot.setMovementNotifications(true);
         await this.bot.playFile(1, '01010010', 0);
-        const hwV = await this.bot.hardwareVersion();  // Contains .color and .colorName (0 black; 1 white)
-        const firmV = await this.bot.firmwareVersion();
-        console.log(`Hardware Ver: ${hwV};  Firmware: ${firmV}`);
+        this.hardware = await this.bot.hardwareVersion();  // Contains .color and .colorName (0 black; 1 white)
+        this.firmware = await this.bot.firmwareVersion();
+        console.log(`Hardware Ver: ${this.hardware};  Firmware: ${this.firmware}`);
+        const firmwareVal = parseFloat(this.firmware);
+        if (isNaN(firmwareVal) || firmwareVal < 1.17) {
+            console.error('Update Firmware!');
+            this.target.runtime.emit('SAY', this.target, 'say', 'Update Firmware!');
+            setTimeout(this.bot.device.disconnect.bind(this.bot.device), 5000);
+            return;
+        }
 
         // Battery check / monitor (1x per min)
         this.batteryCheck = setInterval(async () => {
@@ -189,7 +207,6 @@ class EvoData {
             console.log(`Subscribing to ${event} with value ${value}`);
             this.bot.subscribeCommand(event, this.didRecieveEvent.bind(this, event));
         }
-        console.log(8)
         this.target.runtime.emit('SAY', this.target, 'think', 'Ready');
         this.state = STATE_CONNECTED;
     }
@@ -258,7 +275,6 @@ class OzobotEvoBlocks {
 
         // Create a disconnect handler callback
         this.disconnectHandler = this.evoDisconnect.bind(this);
-
         this.ble = OzobotWebBle;
 
         this.spriteName = "none";
@@ -268,6 +284,8 @@ class OzobotEvoBlocks {
         this.runtime.on('PROJECT_CHANGED', this.projectChanged.bind(this));
         this.runtime.on('TOOLBOX_EXTENSIONS_NEED_UPDATE', this.editingTargetChanged.bind(this));
         this.runtime.on('PROJECT_STOP_ALL', this.stopAll.bind(this));
+
+
 
 //        debug(this.useDebugger);  // Trigger debugger if needed
 
@@ -285,6 +303,17 @@ TODO: Handle events
 
     }
 
+    onTargetMoved(target) {
+        console.log('Target Moved');
+        this.runtime.renderer.updateDrawableProperties(target.evoStatusId, {position: [target.x, target.y]});
+        this.runtime.renderer.setDrawableOrder(target.evoStatusId, Infinity, StageLayering.SPRITE_LAYER);
+
+        /*
+            this.runtime._editingTarget.evoStatusId = this.runtime._editingTarget.runtime.renderer.createDrawable(StageLayering.SPRITE_LAYER);
+            this.runtime._editingTarget.evoSkinId = this.runtime._editingTarget.runtime.renderer.createSVGSkin('<svg width="50" height="50" xmlns="http://www.w3.org/2000/svg"><circle cx="25" cy="25" r="20"/></svg>')
+            this.runtime._editingTarget.runtime.renderer.updateDrawableProperties(this.runtime._editingTarget.evoStatusId, {skinId: this.runtime._editingTarget.evoSkinId});
+        */
+    }
 
     async stopAll() {
         // The project is stopped.  Stop and clear all blocks. 
@@ -580,12 +609,39 @@ TODO: Handle events
         this.updatePalette();
     }
     
+
+    statusSkinSVG(target, connected, power) {
+        let str = `<svg width="${target.size}" height="${target.size}" xmlns="http://www.w3.org/2000/svg"><circle cx="${target.size/2}" cy="${target.size/2}" r="${target.size/2}"/></svg>`;
+        console.log(str);
+        return str;
+    }
+
+
     /**
      * UI Function 
      */
     async updateConnection () {
-        // UI Element call (must use evoData)
         let evoData = this.runtime._editingTarget.evoData;
+
+        // If a "status skin" doesn't exist yet, create one
+        if ('evoStatusId' in this.runtime._editingTarget == false) {
+            // Start tracking motion
+            this.runtime._editingTarget.onTargetMoved = this.onTargetMoved.bind(this, this.runtime._editingTarget);
+            this.runtime._editingTarget.removeListener(RenderedTarget.EVENT_TARGET_VISUAL_CHANGE, this.runtime._editingTarget.onTargetMoved);
+            this.runtime._editingTarget.addListener(RenderedTarget.EVENT_TARGET_VISUAL_CHANGE, this.runtime._editingTarget.onTargetMoved);    
+
+
+            this.runtime._editingTarget.evoStatusId = this.runtime._editingTarget.runtime.renderer.createDrawable(StageLayering.SPRITE_LAYER);
+            this.runtime._editingTarget.evoSkinId = this.runtime._editingTarget.runtime.renderer.createSVGSkin(this.statusSkinSVG(this.runtime._editingTarget, evoData.state === STATE_CONNECTED, null));
+            this.runtime._editingTarget.runtime.renderer.updateDrawableProperties(this.runtime._editingTarget.evoStatusId, {skinId: this.runtime._editingTarget.evoSkinId});
+        }
+            /*
+skinId = target.runtime.renderer.createSVGSkin('<svg width="50" height="50" xmlns="http://www.w3.org/2000/svg"><circle cx="25" cy="25" r="20"/></svg>')
+
+target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
+     */   
+
+        // UI Element call (must use evoData)
         if(evoData.state === STATE_DISCONNECTED) {
             console.log('Getting BLE device');
             console.dir(this);
@@ -606,7 +662,8 @@ TODO: Handle events
             } catch(err) {
                 console.dir(err);
                 console.log('Error / no connection.');
-                await evoData.bot.device.disconnect();
+                if (evoData.bot)
+                    await evoData.bot.device.disconnect();
             }
     
         } else if (evoData.state === STATE_CONNECTED) {
@@ -628,10 +685,6 @@ TODO: Handle events
 
     timedPromise(time, fail = false) {
         return new Promise((resolve, reject) => setTimeout(() => (fail ? reject() : resolve()), time));
-    }
-
-    restrictRange(min, max, value) {
-        return Math.max(min, Math.min(value, max))
     }
 
     async tone (args, util) {
@@ -681,8 +734,8 @@ TODO: Handle events
         if (evoData === null) {
             return;
         }
-        const dist = this.restrictRange(-1500, 1500, Cast.toNumber(args.DISTANCE));
-        const speed =  this.restrictRange(15, 300, Cast.toNumber(args.SPEED));
+        const dist = MathUtil.clamp(Cast.toNumber(args.DISTANCE), -1500, 1500);
+        const speed =  MathUtil.clamp(Cast.toNumber(args.SPEED), 15, 300);
         console.log(`Sending dist: ${dist} and speed ${speed}`);
 
         // End any other motion in progress
@@ -703,9 +756,9 @@ TODO: Handle events
         if (evoData === null) {
             return;
         }       
-        const radius = this.restrictRange(-1500, 1500, Cast.toNumber(args.RADIUS));
-        const degrees =  this.restrictRange(-360, 360, Cast.toNumber(args.SPEED));
-        const speed =  this.restrictRange(15, 300, Cast.toNumber(args.SPEED));
+        const radius = MathUtil.clamp(Cast.toNumber(args.RADIUS), -1500, 1500);
+        const degrees =  MathUtil.clamp(Cast.toNumber(args.SPEED), -360, 360);
+        const speed =  MathUtil.clamp(Cast.toNumber(args.SPEED), 15, 300);
         console.log(`Sending radius: ${radius}, degrees: ${degrees} and speed ${speed}`);
 
         // End any other motion in progress
@@ -728,7 +781,7 @@ TODO: Handle events
             return;
         }
         const degrees = Cast.toNumber(args.DEGREES);
-        const speed =  this.restrictRange(15, 600, Cast.toNumber(args.SPEED));
+        const speed =  MathUtil.clamp(Cast.toNumber(args.SPEED), 15, 600);
         console.log(`Sending degrees: ${degrees} and speed ${speed}`);
 
         // End any other motion in progress
@@ -820,3 +873,33 @@ Costumes / Images:
     Default project data: ./packages/scratch-gui/src/lib/default-project/e6ddc55a6ddd9cc9d84fe0b4c21e016f.svg
 
     */
+
+
+    /*
+
+    ReDrawing stuff: this.runtime.requestRedraw();
+
+      RendererWebGL.js
+        createSVGSkin()  : Add a new skin with a specific ID
+        updateSVGSkin()
+         _reskin()
+         destroySkin()
+
+         createBitmapSkin()  in renderer
+
+
+
+            bubbleState.drawableId = this.runtime.renderer.createDrawable(StageLayering.SPRITE_LAYER);
+         bubbleState.skinId = this.runtime.renderer.createTextSkin(type, text, bubbleState.onSpriteRight, [0, 0]);
+            this.runtime.renderer.updateDrawableProperties(bubbleState.drawableId, {
+                skinId: bubbleState.skinId
+            });
+
+
+drawableId = this.runtime.renderer.createDrawable(StageLayering.SPRITE_LAYER);
+drawableId = target.runtime.renderer.createDrawable('sprite');
+skinId = target.runtime.renderer.createSVGSkin('<svg width="50" height="50" xmlns="http://www.w3.org/2000/svg"><circle cx="25" cy="25" r="20"/></svg>')
+
+target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
+
+*/
