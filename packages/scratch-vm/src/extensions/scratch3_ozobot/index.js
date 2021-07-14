@@ -10,7 +10,18 @@ const StageLayering = require('../../engine/stage-layering');
 
 const OzobotWebBle = require('./ozobot-webble.umd.js');
 const OzobotConstants = require('./ozobot-constants.js');
-const { debug } = require("../../util/log");
+const { debug } = require('../../util/log');
+
+const fileUploader = require('../../../../../src/lib/file-uploader.js');  // Syntax for files in other modules (outside scratch-vm)
+//import {costumeUpload} from '../../../../../src/lib/file-uploader.js';
+
+function debugMessage (msg) {
+    if (typeof msg === 'string') {
+        console.log(msg);
+    } else {
+        console.dir(msg);
+    }
+}
 
 //const Runtime = require('../../engine/runtime');
 //const { listenerCount, THREAD_STEP_INTERVAL } = require("../../engine/runtime");
@@ -72,9 +83,44 @@ const allEvents =  ['ANSWER',
 
 /*
 TODOs:
+Clean-up / Docs / Clarification
 targetWasRemoved:  Check for status skin and remove if needed 
 "STOP" things:  Stop all blocks / events. 
 Ozobot icons (overhead).
+"On Connected" Block
+Auto Re-connect
+Lights / Light state / rotation
+
+Er, actual blocks
+    Reporters
+        Get Color Reporter (returns Color)
+        Get Color string (returns one of recognized colors)
+        Get distance (?)
+  
+    Commands
+        Forward for...
+        Motor power / time ???
+        Enable line following?
+        Back light
+        RGB Light (?)
+        Say number (?)
+        Say X
+        Send Message (direction)
+
+        Set name? 
+        Turn off?
+
+    Events   
+        On updated distance
+        On new color 
+        On Ozobot detected
+        On new message
+x    
+    
+    
+    On connect
+    on disconnect 
+
 
 */
 
@@ -84,8 +130,10 @@ const blockIconURI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJYAAACWCAYA
 
 const EXTENSION_ID = 'ozobotEvoRobot';
 
-const STATE_CONNECTED = 1;
-const STATE_DISCONNECTED = 2;
+const ConnectionState = {
+    Connected: 1,
+    Disconnected: 2
+};
 
 // Event Tags (for "replies" from Ozobot)
 const MOTION_DONE = 'motion done';
@@ -96,7 +144,7 @@ class EvoData {
 
     constructor (target, blocks) {
         this.bot = null;
-        this.state = STATE_DISCONNECTED;
+        this.state = ConnectionState.Disconnected;
         this.ozoblocks = blocks;
         this.target = target;  // Scratch target object for this Evo object
         this.didDisconnectHandler = this.didDisconnect.bind(this);
@@ -111,25 +159,25 @@ class EvoData {
      * 
      * @param {*} event The event to wait for
      * @param {int} timeout (in ms); null or 0 if none
-     * @returns a promise that will be resolved/rejected when the item is done (the promise will resolve to a return value too)
+     * @returns a promise that will be resolved/rejected. When the item is done (the promise will resolve to a return value too)
      */
     eventCompletionPromise (event, timeout = null) {
         // Get a list of any existing handlers for this promise
         const callbacks = this.pendingOperations.get(event) || [];
-        console.log(`Timeout: ${timeout}`);
+        debugMessage(`Timeout: ${timeout}`);
         // Create a timer to trigger the event if needed
         const onTimeout = () => { 
-            console.log(`TIMEOUT ${event} ${this}`); 
+            debugMessage(`TIMEOUT ${event} ${this}`); 
             this.completeEvents(event, 'timeout');
         };
         const timer = timeout !== null ? window.setTimeout(onTimeout, timeout) : null;
-        console.log(`Timer: ${timer}`)
+        debugMessage(`Timer: ${timer}`)
         // Create a promise and add it to the list
         const p = new Promise(resolve => { 
             callbacks.push(d => {
-                console.log(`${event} finished with event`);
+                debugMessage(`${event} finished with event`);
                 resolve(d);
-                console.log(`clearing timer: ${timer}`)
+                debugMessage(`clearing timer: ${timer}`)
                 clearTimeout(timer);
             });
         });
@@ -174,7 +222,7 @@ class EvoData {
         await this.bot.playFile(1, '01010010', 0);
         this.hardware = await this.bot.hardwareVersion();  // Contains .color and .colorName (0 black; 1 white)
         this.firmware = await this.bot.firmwareVersion();
-        console.log(`Hardware Ver: ${this.hardware};  Firmware: ${this.firmware}`);
+        debugMessage(`Hardware Ver: ${this.hardware};  Firmware: ${this.firmware}`);
         const firmwareVal = parseFloat(this.firmware);
         if (isNaN(firmwareVal) || firmwareVal < 1.17) {
             console.error('Update Firmware!');
@@ -186,7 +234,7 @@ class EvoData {
         // Battery check / monitor (1x per min)
         this.batteryCheck = setInterval(async () => {
             const batteryLevel = await this.bot.batteryLevel(); 
-            console.log(`Battery: ${batteryLevel}`)
+            debugMessage(`Battery: ${batteryLevel}`)
             if (batteryLevel < 20) {
                 this.target.runtime.emit('SAY', this.target, 'think', 'Low Battery!');
             }
@@ -204,16 +252,16 @@ class EvoData {
  
         // TODO / Debugging Log all event notifications
         for (const [event, value] of Object.entries(this.bot.commandsNotifications.notifications)) {
-            console.log(`Subscribing to ${event} with value ${value}`);
+            debugMessage(`Subscribing to ${event} with value ${value}`);
             this.bot.subscribeCommand(event, this.didRecieveEvent.bind(this, event));
         }
         this.target.runtime.emit('SAY', this.target, 'think', 'Ready');
-        this.state = STATE_CONNECTED;
+        this.state = ConnectionState.Connected;
     }
 
 
     didRecieveEvent (name, data) {
-        console.log(`Event ${name}: ${data}`);
+        debugMessage(`Event ${name}: ${data}`);
         console.dir(data);
 
         // Deal with meaningful events and "translate" to triggers
@@ -225,11 +273,11 @@ class EvoData {
             break;
 
         case 'fileState':
-            console.log("File State")
+            debugMessage("File State")
             // Check for type (129=UserAudio or 1=Audio, 7=AudioNote, 0=Firmware, 5=AudioSpeex) and running
             // What's 255 == Tone????
             if ([0, 1, 5, 7, 129, 255].includes(data.fileType) && data.running === false) {
-                console.log('Audio Done')
+                debugMessage('Audio Done')
                 this.completeEvents(AUDIO_DONE, data);
             }
             break;
@@ -243,10 +291,10 @@ class EvoData {
     }
 
     didDisconnect() {
-        console.log('Evo Disconnect');
+        debugMessage('Evo Disconnect');
         this.bot.removeDisconnectListener(this.didDisconnectHandler);
         this.bot = null;
-        this.state = STATE_DISCONNECTED;
+        this.state = ConnectionState.Disconnected;
         this.ozoblocks.updatePalette();
         this.completeEvents(); // Clear all pending events
 
@@ -304,7 +352,7 @@ TODO: Handle events
     }
 
     onTargetMoved(target) {
-        console.log('Target Moved');
+        debugMessage('Target Moved');
         this.runtime.renderer.updateDrawableProperties(target.evoStatusId, {position: [target.x, target.y]});
         this.runtime.renderer.setDrawableOrder(target.evoStatusId, Infinity, StageLayering.SPRITE_LAYER);
 
@@ -317,7 +365,7 @@ TODO: Handle events
 
     async stopAll() {
         // The project is stopped.  Stop and clear all blocks. 
-        console.log("Stop All");
+        debugMessage("Stop All");
     }
     /**
      * TOOLBOX_EXTENSIONS_NEED_UPDATE Event: Something substantial has changed, like the selected target
@@ -326,7 +374,7 @@ TODO: Handle events
      */
     editingTargetChanged() {
         // Update the "bot" variable for this target
-        console.log(`Target changed: ${this.runtime._editingTarget.sprite.name}`)
+        debugMessage(`Target changed: ${this.runtime._editingTarget.sprite.name}`)
         // If the current object doesn't have an Evo, associate a new uninit one 
         if ('evoData' in this.runtime._editingTarget == false) {
             this.runtime._editingTarget.evoData = new EvoData(this.runtime._editingTarget, this);
@@ -350,7 +398,7 @@ TODO: Handle events
      * @param {} name 
      */
     eventTrigger (name) {
-        console.log(`Event: ${name}`);
+        debugMessage(`Event: ${name}`);
         /*
         Green Flag:  PROJECT_STOP_ALL, PROJECT_START
         Red Flag: PROJECT_STOP_ALL
@@ -394,7 +442,7 @@ TODO: Handle events
                     func: 'CONNECT_OZOBOTEVO',
                     blockType: BlockType.BUTTON,
                     // TODO: Add Ozo name to disconnect string
-                    text: (evoData!==null && evoData.state===STATE_CONNECTED) ? 
+                    text: (evoData!==null && evoData.state===ConnectionState.Connected) ? 
                        (evoData && evoData.name ? `Disconnect from ${evoData.name}` : 'Disconnect') :
                        (`Connect ${this.spriteName} to an Evo`)
                 },
@@ -568,29 +616,30 @@ TODO: Handle events
     // BSIEVER: These may not be needed for Evo, but they are somehow used....
     /* The following 4 functions have to exist for the peripherial indicator */
     connect() {
-        console.log('connect()');
+        debugMessage('connect()');
     }
     disconnect() {
-        console.log('disconnect()');
+        debugMessage('disconnect()');
     }
 
     scan() {
         // Called by the info button. 
-        console.log('scan()');
+        debugMessage('scan()');
         
     }
     isConnected() {
-        console.log('isConnected()');
+        debugMessage('isConnected()');
     }
     
     useDebugger(args, util) {
-        console.log("Use Debugger Called")    
-        console.dir(args);
+        debugMessage("Use Debugger Called")    
+        debugMessage(args);
+        // this.updateCostume(util.target);
         debugger;
     }
 
     onDeviceDisconnected () {
-        console.log("Lost connection to robot");   
+        debugMessage("Lost connection to robot");   
         this.runtime.emit(this.runtime.constructor.PERIPHERAL_DISCONNECTED);
     }
 
@@ -601,18 +650,18 @@ TODO: Handle events
     }
 
     evoDisconnect() {
-        console.log("Disconnected");
+        debugMessage("Disconnected");
         // Remove the disconnect handler
         this.bot.removeDisconnectListener(this.disconnectHandler);
         this.bot = null; // Frees object...Hopefully garbage collected
-        this.state = STATE_DISCONNECTED;
+        this.state = ConnectionState.Disconnected;
         this.updatePalette();
     }
     
 
     statusSkinSVG(target, connected, power) {
         let str = `<svg width="${target.size}" height="${target.size}" xmlns="http://www.w3.org/2000/svg"><circle cx="${target.size/2}" cy="${target.size/2}" r="${target.size/2}"/></svg>`;
-        console.log(str);
+        debugMessage(str);
         return str;
     }
 
@@ -632,7 +681,7 @@ TODO: Handle events
 
 
             this.runtime._editingTarget.evoStatusId = this.runtime._editingTarget.runtime.renderer.createDrawable(StageLayering.SPRITE_LAYER);
-            this.runtime._editingTarget.evoSkinId = this.runtime._editingTarget.runtime.renderer.createSVGSkin(this.statusSkinSVG(this.runtime._editingTarget, evoData.state === STATE_CONNECTED, null));
+            this.runtime._editingTarget.evoSkinId = this.runtime._editingTarget.runtime.renderer.createSVGSkin(this.statusSkinSVG(this.runtime._editingTarget, evoData.state === ConnectionState.Connected, null));
             this.runtime._editingTarget.runtime.renderer.updateDrawableProperties(this.runtime._editingTarget.evoStatusId, {skinId: this.runtime._editingTarget.evoSkinId});
         }
             /*
@@ -642,31 +691,31 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
      */   
 
         // UI Element call (must use evoData)
-        if(evoData.state === STATE_DISCONNECTED) {
-            console.log('Getting BLE device');
-            console.dir(this);
+        if(evoData.state === ConnectionState.Disconnected) {
+            debugMessage('Getting BLE device');
+            debugMessage(this);
             try {
                 evoData.bot = await this.ble.OzobotEvoWebBLE.requestDevice([{namePrefix: 'Ozo'}]);
                 if (evoData.bot === null) {
                     // Not connected??
-                    console.log('NOT Got a bot');
+                    debugMessage('NOT Got a bot');
                 } else {
                     // Connected????
-                    console.log('Got a bot');
-                    console.dir(evoData.bot);
+                    debugMessage('Got a bot');
+                    debugMessage(evoData.bot);
                     await evoData.setupOnConnection();
-                    console.log(`Setup Done: ${evoData.name}`);
+                    debugMessage(`Setup Done: ${evoData.name}`);
                     this.updatePalette();
                 }
         
             } catch(err) {
-                console.dir(err);
-                console.log('Error / no connection.');
+                debugMessage(err);
+                debugMessage('Error / no connection.');
                 if (evoData.bot)
                     await evoData.bot.device.disconnect();
             }
     
-        } else if (evoData.state === STATE_CONNECTED) {
+        } else if (evoData.state === ConnectionState.Connected) {
             // Dis connect
             if (evoData.bot !== null) {
                 await evoData.bot.device.disconnect();
@@ -678,7 +727,7 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
     checkTargetForEvo(target) {
         // Return null (if invalid) or bot object otherwise
         // TODO:  Check for valid evo data / return if none
-        if ('evoData' in target === false || target.evoData.state !== STATE_CONNECTED)
+        if ('evoData' in target === false || target.evoData.state !== ConnectionState.Connected)
             return null;
         return target.evoData;
     }
@@ -688,8 +737,8 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
     }
 
     async tone (args, util) {
-        console.log(`tone`);
-        console.dir(args);
+        debugMessage(`tone`);
+        debugMessage(args);
 
         const evoData = this.checkTargetForEvo(util.target);
         if (evoData === null) {
@@ -706,7 +755,7 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
         const freq = 440 / 32 * 2 ** ((Cast.toNumber(args.TONE) - 9) / 12);
         const duration = Cast.toNumber(args.DURATION);
         const timeout = duration + 1000;
-        console.log(`freq: ${freq} for ${duration} ms`);
+        debugMessage(`freq: ${freq} for ${duration} ms`);
         const rp = evoData.eventCompletionPromise(AUDIO_DONE, timeout).then(() => {evoData.audio_playing = false;});
         evoData.audio_playing = true;
         await evoData.bot.generateTone(freq, duration, 200);  // Last argument is loudness; Appears to be unused
@@ -714,34 +763,34 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
     }
 
     async setLEDs (args, util) {
-        console.log(`setLEDs`);
-        console.dir(args);
+        debugMessage(`setLEDs`);
+        debugMessage(args);
         const evoData = this.checkTargetForEvo(util.target);
         if (evoData === null) {
             return;
         }
 
         let ledID = 2**LED_NAMES.indexOf(args.LED); // Convert the index to a bit position (2^index)
-        console.log(`LED ID: ${ledID}`);
+        debugMessage(`LED ID: ${ledID}`);
         const color = Cast.toRgbColorObject(args.COLOR);
         await evoData.bot.setLED(ledID, color.r, color.g, color.b);
     }
 
     async forward (args, util) {
-        console.log(`forward`);
-        console.dir(args);
+        debugMessage(`forward`);
+        debugMessage(args);
         const evoData = this.checkTargetForEvo(util.target);
         if (evoData === null) {
             return;
         }
         const dist = MathUtil.clamp(Cast.toNumber(args.DISTANCE), -1500, 1500);
         const speed =  MathUtil.clamp(Cast.toNumber(args.SPEED), 15, 300);
-        console.log(`Sending dist: ${dist} and speed ${speed}`);
+        debugMessage(`Sending dist: ${dist} and speed ${speed}`);
 
         // End any other motion in progress
         // evoData.completeEvents(MOTION_DONE);
         let expectedTime = dist / speed * 1000 * 1.3 + 1000; // Timeout needs to be way past when response should be received
-        console.log(`Expected time: ${expectedTime}`);
+        debugMessage(`Expected time: ${expectedTime}`);
         // Create promises to ensure end (either completion or time)
         let rp = evoData.eventCompletionPromise(MOTION_DONE, expectedTime);
         // Initiate motion
@@ -750,8 +799,8 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
     }
 
     async circle (args, util) {
-        console.log(`circle`);
-        console.dir(args);
+        debugMessage(`circle`);
+        debugMessage(args);
         const evoData = this.checkTargetForEvo(util.target);
         if (evoData === null) {
             return;
@@ -759,13 +808,13 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
         const radius = MathUtil.clamp(Cast.toNumber(args.RADIUS), -1500, 1500);
         const degrees =  MathUtil.clamp(Cast.toNumber(args.SPEED), -360, 360);
         const speed =  MathUtil.clamp(Cast.toNumber(args.SPEED), 15, 300);
-        console.log(`Sending radius: ${radius}, degrees: ${degrees} and speed ${speed}`);
+        debugMessage(`Sending radius: ${radius}, degrees: ${degrees} and speed ${speed}`);
 
         // End any other motion in progress
         // evoData.completeEvents(MOTION_DONE);
         const dist = 2 * 3.14 * radius * degrees / 360;
         let expectedTime = dist / speed * 1000 * 1.3 + 1000; // Timeout needs to be way past when response should be received
-        console.log(`Expected time: ${expectedTime}`);
+        debugMessage(`Expected time: ${expectedTime}`);
         // Create promises to ensure end (either completion or time)
         let rp = evoData.eventCompletionPromise(MOTION_DONE, expectedTime);
         // Initiate motion
@@ -774,20 +823,20 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
     }
 
     async rotate (args, util) {
-        console.log(`rotate`);
-        console.dir(args);
+        debugMessage(`rotate`);
+        debugMessage(args);
         const evoData = this.checkTargetForEvo(util.target);
         if (evoData === null) {
             return;
         }
         const degrees = Cast.toNumber(args.DEGREES);
         const speed =  MathUtil.clamp(Cast.toNumber(args.SPEED), 15, 600);
-        console.log(`Sending degrees: ${degrees} and speed ${speed}`);
+        debugMessage(`Sending degrees: ${degrees} and speed ${speed}`);
 
         // End any other motion in progress
         // evoData.completeEvents(MOTION_DONE);
         let expectedTime = degrees / speed * 1000 * 1.3 + 1000;
-        console.log(`Expected time: ${expectedTime}`);
+        debugMessage(`Expected time: ${expectedTime}`);
         // Create promises to ensure end (either completion or time)
         let rp = evoData.eventCompletionPromise(MOTION_DONE, expectedTime);
         // Initiate motion
@@ -797,13 +846,247 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
     }      
 
     whenObstacle (args, util) {
-        console.log(`whenObstacle check ${util.thread.topBlock}`);
+        debugMessage(`whenObstacle check ${util.thread.topBlock}`);
         if("value" in this == false) 
             this.value = true;
         else
             this.value = !this.value;
         return this.value;
     }
+
+
+    updateCostume(target) {
+        const svg = `
+        <svg width="300mm" height="300mm" version="1.1" xmlns="http://www.w3.org/2000/svg">
+         <g transform="translate(-48 -62.3)" stroke="#000">
+          <path id="outerbody" d="m101 260a31.1 30.1 0 0 0 17.8-5.47 97.6 96.5 0 0 0 28.8 4.3 97.6 96.5 0 0 0 97.6-96.5 97.6 96.5 0 0 0-97.6-96.5 97.6 96.5 0 0 0-28.8 4.29 31.1 30.1 0 0 0-17.8-5.46 31.1 30.1 0 0 0-31.1 30.1 31.1 30.1 0 0 0 1.05 7.77 97.6 96.5 0 0 0-21 59.8 97.6 96.5 0 0 0 21 59.8 31.1 30.1 0 0 0-1.06 7.73 31.1 30.1 0 0 0 31.1 30.1z" fill="#dcdcdc" stroke-width="4.71"/>
+          <circle id="topboard" transform="scale(-1)" cx="-150" cy="-163" r="62.1" fill="#d7d7d7" stroke-width="4.73"/>
+          <rect transform="scale(-1)" x="-150" y="-160" width="35.4" height="35.4" stroke-width="4.57"/>
+          <g fill="#d7d7d7">
+           <rect id="fcLED" x="230" y="158" width="10" height="10"/>
+           <rect id="rLED" x="55.8" y="158" width="10" height="10"/>
+           <rect id="frLED" x="221" y="188" width="10" height="10"/>
+           <rect id="flLED" x="221" y="129" width="10" height="10"/>
+           <rect id="fllLED" x="203" y="98.6" width="10" height="10"/>
+           <rect id="pLED" x="143" y="70.5" width="10" height="10"/>
+           <rect x="203" y="218" width="10" height="10"/>
+          </g>
+         </g>
+        </svg>`;
+        let rotationCenterX = 100;
+        let rotationCenterY = 100;
+                     //);
+        target.renderer.updateSVGSkin(target.sprite.costumes_[0].skinId, svg, [rotationCenterX, rotationCenterY]);    
+    }
+
+
+    updateCostumeOld (target) {
+
+
+
+        /// Bleh.  The below partially works.
+        // Take 5:  virtual-machine.js has an updateSvg thing for costumes bbbb(editor updates)
+
+
+        // Render the costume 
+
+        // BLEH.  This doesn't work.  Try to use fileUploader...somehow...
+        // Get the 0th costume as a template
+
+        let data = new TextEncoder("utf-8").encode(`
+                <svg
+                width="300mm"
+                height="303.55475mm"
+                viewBox="0 0 300 303.55474"
+                version="1.1"
+                id="svg867"
+                inkscape:version="1.1 (c4e8f9e, 2021-05-24)"
+                sodipodi:docname="whiteFit.svg"
+                xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+                xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+                xmlns="http://www.w3.org/2000/svg"
+                xmlns:svg="http://www.w3.org/2000/svg">
+               <sodipodi:namedview
+                  id="namedview869"
+                  pagecolor="#ffffff"
+                  bordercolor="#666666"
+                  borderopacity="1.0"
+                  inkscape:pageshadow="2"
+                  inkscape:pageopacity="0.0"
+                  inkscape:pagecheckerboard="true"
+                  inkscape:document-units="mm"
+                  showgrid="false"
+                  inkscape:zoom="0.45546605"
+                  inkscape:cx="350.19075"
+                  inkscape:cy="268.95528"
+                  inkscape:window-width="1312"
+                  inkscape:window-height="1003"
+                  inkscape:window-x="671"
+                  inkscape:window-y="25"
+                  inkscape:window-maximized="0"
+                  inkscape:current-layer="layer1"
+                  inkscape:showpageshadow="false"
+                  showborder="true"
+                  fit-margin-top="0"
+                  fit-margin-left="0"
+                  fit-margin-right="0"
+                  fit-margin-bottom="0" />
+               <defs
+                  id="defs864" />
+               <g
+                  inkscape:label="Layer 1"
+                  inkscape:groupmode="layer"
+                  id="layer1"
+                  transform="translate(-47.965012,-62.258192)">
+                 <path
+                    id="outerbody"
+                    style="fill:#dcdcdc;fill-opacity:1;stroke:#000000;stroke-width:4.734;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+                    d="m 101.35775,262.26112 a 31.065517,30.473793 0 0 0 17.82402,-5.53159 97.634481,97.634481 0 0 0 28.78326,4.34821 97.634481,97.634481 0 0 0 97.63309,-97.63617 97.634481,97.634481 0 0 0 -97.63309,-97.633107 97.634481,97.634481 0 0 0 -28.79243,4.342107 31.065517,30.473793 0 0 0 -17.81485,-5.525484 31.065517,30.473793 0 0 0 -31.067444,30.474236 31.065517,30.473793 0 0 0 1.051884,7.858598 97.634481,97.634481 0 0 0 -21.010277,60.48365 97.634481,97.634481 0 0 0 21.019449,60.52342 31.065517,30.473793 0 0 0 -1.061056,7.8219 31.065517,30.473793 0 0 0 31.067444,30.47423 z"
+                    inkscape:label="#outerbody" />
+                 <circle
+                    style="fill:#d7d7d7;fill-opacity:1;stroke:#000000;stroke-width:4.734;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+                    id="topboard"
+                    cx="-147.96503"
+                    cy="-163.44312"
+                    r="62.131035"
+                    transform="scale(-1)"
+                    inkscape:label="#topboard" />
+                 <rect
+                    style="fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:4.734;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+                    id="rect4090"
+                    width="36.686893"
+                    height="36.686893"
+                    x="-176.42761"
+                    y="-203.67636"
+                    transform="scale(-1)" />
+               </g>
+             </svg>
+                             `);
+
+
+
+        debugMessage('Adding Costume!!!')
+        fileUploader.costumeUpload(data, 'image/svg+xml', this.runtime.storage, costume => {
+            debugMessage('Added Costume');
+            costume = costume[0];
+            debugMessage(costume);
+            costume.bitmapResolution = 1;
+            costume.rotationCenterX = 150;
+            costume.rotationCenterY = 150;
+            costume.size = [300,303];
+            costume.name = 'OzoCostume';
+/*
+rotationCenterX: 150
+rotationCenterY: 151.77737426757812
+size: (2) [300, 303.55474853515625]
+*/
+            debugger 
+
+            // If the costume doesn't exist, add it.  Otherwise replace it
+            let index = target.getCostumeIndexByName('OzoCostume');
+            if (index === -1) {
+                debugMessage('Adding costume');
+                index = target.sprite.costumes_.length;
+                costume.skinId = index;
+                target.addCostume(costume, index);
+            } else {
+                debugMessage('Updating Costume');
+                target.sprite.costumes_.splice(index, 1, costume);
+            }
+            target.setCostume(index);
+        });
+
+
+
+
+        // {
+        //     name: 'OzoCostume',
+        //     assetId: "b93d711c138237f87e486745e32df81f",
+        //     bitmapResolution: 1,
+        //     dataFormat: "svg",
+        //     md5: "b93d711c138237f87e486745e32df81f.svg",
+        //     asset: {
+        //         assetId: "b93d711c138237f87e486745e32df81f",
+        //         assetType: {contentType: "image/svg+xml", name: "ImageVector", runtimeFormat: "svg", immutable: true},
+        //         clean: false,
+        //         data: new TextEncoder("utf-8").encode(`
+        //         <svg
+        //         width="300mm"
+        //         height="303.55475mm"
+        //         viewBox="0 0 300 303.55474"
+        //         version="1.1"
+        //         id="svg867"
+        //         inkscape:version="1.1 (c4e8f9e, 2021-05-24)"
+        //         sodipodi:docname="whiteFit.svg"
+        //         xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+        //         xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+        //         xmlns="http://www.w3.org/2000/svg"
+        //         xmlns:svg="http://www.w3.org/2000/svg">
+        //        <sodipodi:namedview
+        //           id="namedview869"
+        //           pagecolor="#ffffff"
+        //           bordercolor="#666666"
+        //           borderopacity="1.0"
+        //           inkscape:pageshadow="2"
+        //           inkscape:pageopacity="0.0"
+        //           inkscape:pagecheckerboard="true"
+        //           inkscape:document-units="mm"
+        //           showgrid="false"
+        //           inkscape:zoom="0.45546605"
+        //           inkscape:cx="350.19075"
+        //           inkscape:cy="268.95528"
+        //           inkscape:window-width="1312"
+        //           inkscape:window-height="1003"
+        //           inkscape:window-x="671"
+        //           inkscape:window-y="25"
+        //           inkscape:window-maximized="0"
+        //           inkscape:current-layer="layer1"
+        //           inkscape:showpageshadow="false"
+        //           showborder="true"
+        //           fit-margin-top="0"
+        //           fit-margin-left="0"
+        //           fit-margin-right="0"
+        //           fit-margin-bottom="0" />
+        //        <defs
+        //           id="defs864" />
+        //        <g
+        //           inkscape:label="Layer 1"
+        //           inkscape:groupmode="layer"
+        //           id="layer1"
+        //           transform="translate(-47.965012,-62.258192)">
+        //          <path
+        //             id="outerbody"
+        //             style="fill:#dcdcdc;fill-opacity:1;stroke:#000000;stroke-width:4.734;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+        //             d="m 101.35775,262.26112 a 31.065517,30.473793 0 0 0 17.82402,-5.53159 97.634481,97.634481 0 0 0 28.78326,4.34821 97.634481,97.634481 0 0 0 97.63309,-97.63617 97.634481,97.634481 0 0 0 -97.63309,-97.633107 97.634481,97.634481 0 0 0 -28.79243,4.342107 31.065517,30.473793 0 0 0 -17.81485,-5.525484 31.065517,30.473793 0 0 0 -31.067444,30.474236 31.065517,30.473793 0 0 0 1.051884,7.858598 97.634481,97.634481 0 0 0 -21.010277,60.48365 97.634481,97.634481 0 0 0 21.019449,60.52342 31.065517,30.473793 0 0 0 -1.061056,7.8219 31.065517,30.473793 0 0 0 31.067444,30.47423 z"
+        //             inkscape:label="#outerbody" />
+        //          <circle
+        //             style="fill:#d7d7d7;fill-opacity:1;stroke:#000000;stroke-width:4.734;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+        //             id="topboard"
+        //             cx="-147.96503"
+        //             cy="-163.44312"
+        //             r="62.131035"
+        //             transform="scale(-1)"
+        //             inkscape:label="#topboard" />
+        //          <rect
+        //             style="fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:4.734;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+        //             id="rect4090"
+        //             width="36.686893"
+        //             height="36.686893"
+        //             x="-176.42761"
+        //             y="-203.67636"
+        //             transform="scale(-1)" />
+        //        </g>
+        //      </svg>
+        //                      `),
+        //         dataFormat: "svg",
+        //         dependencies: []
+        //     }
+        // };
+
+
+
+    }
+
 }
 module.exports = OzobotEvoBlocks;
 
