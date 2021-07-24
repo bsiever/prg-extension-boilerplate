@@ -7,13 +7,20 @@ const Cast = require('../../util/cast');
 const MathUtil = require('../../util/math-util');
 const RenderedTarget = require('../../sprites/rendered-target');
 const StageLayering = require('../../engine/stage-layering');
-
 const OzobotWebBle = require('./ozobot-webble.umd.js');
 const OzobotConstants = require('./ozobot-constants.js');
 const { debug } = require('../../util/log');
+const {loadCostumeFromAsset} = require('../../import/load-costume');
+
+
+// GuiReducer has a scratchGui, which has a vm ....Right???
+//import initialState from '../../../../../src/reducers/vm';
+//  Relative path : ../../../../scratch-gui/src/reducers/vm.js
 
 const fileUploader = require('../../../../../src/lib/file-uploader.js');  // Syntax for files in other modules (outside scratch-vm)
+// From an actual path of   ../../../../scratch-gui/src/lib/file-uploader.js 
 //import {costumeUpload} from '../../../../../src/lib/file-uploader.js';
+
 
 function debugMessage (msg) {
     if (typeof msg === 'string') {
@@ -632,9 +639,18 @@ TODO: Handle events
     }
     
     useDebugger(args, util) {
-        debugMessage("Use Debugger Called")    
+        debugMessage("Use Debugger Called");
+      //  let vm = initialState; 
         debugMessage(args);
-        // this.updateCostume(util.target);
+        this.updateCostume(util.target);
+
+        util.target.sprite.costumes.forEach( 
+            (c, i) => {
+                  let data =  new TextDecoder().decode(c.asset.data);
+                  console.log(`Costume[${i}] = ${data}`);
+            }
+        );
+
         debugger;
     }
 
@@ -855,8 +871,103 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
     }
 
 
-    updateCostume(target) {
-        const svg = `
+
+    // BSIEVER: This kinda works! 
+    updateCostume (target) {
+        //     updateSvg (costumeIndex, svg, rotationCenterX, rotationCenterY) {
+        const costume = target.sprite.costumes[0];
+
+        // Upload an SVG, tidy up, and dump all costumes via something like
+        /*  target.sprite.costumes.forEach( 
+            (c, i) => {
+                  let data =  new TextDecoder().decode(c.asset.data);
+                  console.log(`Costume[${i}] = ${data}`);
+            }
+        );
+        */
+       // Based on EvaBodyAbove23Plain,svg
+        const svg = ` <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="475.91589" height="325.83565"><g transform="translate(0.57474,-14.55817)"><g data-paper-data="{&quot;isPaintingLayer&quot;:true}" fill="none" fill-rule="nonzero" stroke="none" stroke-width="none" stroke-linecap="none" stroke-linejoin="none" stroke-miterlimit="4" stroke-dasharray="" stroke-dashoffset="0" font-family="none" font-weight="none" font-size="none" text-anchor="none" style="mix-blend-mode: normal"><path d="M125.77622,321.29011c-9.42567,-9.13483 -14.72092,-21.52463 -14.72073,-34.44355c0.01071,-4.22191 0.58773,-8.42455 1.71655,-12.50226c-22.02574,-27.5492 -34.00597,-61.63146 -34.00459,-96.73883c0.00888,-35.08382 11.98301,-69.1412 33.98976,-96.67522c-1.12903,-4.09733 -1.7011,-8.32002 -1.70171,-12.56095c-0.00019,-12.91891 5.29505,-25.30872 14.72072,-34.44356c9.42567,-9.13483 22.2096,-14.26634 35.5392,-14.26554c10.31425,0.00788 20.37622,3.0913 28.8203,8.83177c15.08808,-4.60079 30.78914,-6.94023 46.57947,-6.94029c87.23159,0.00123 157.94646,69.86818 157.94769,156.05379c0.00072,41.3887 -16.63975,81.08251 -46.2607,110.3492c-29.62095,29.26669 -69.79597,45.70889 -111.68698,45.70948c-15.78586,-0.00468 -31.48182,-2.3474 -46.56464,-6.95005c-8.44704,5.74674 -18.51474,8.83373 -28.83513,8.84152c-13.3296,0.0008 -26.11352,-5.1307 -35.53919,-14.26553z" data-paper-data="{&quot;origPos&quot;:null}" id="outerbody" fill="#dcdcdc" stroke="#000000" stroke-width="2.21675" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M337.22101,179.52796c0,55.50597 -44.99648,100.50246 -100.50246,100.50246c-55.50597,0 -100.50246,-44.99648 -100.50246,-100.50246c0,-55.50597 44.99648,-100.50246 100.50246,-100.50246c55.50597,0 100.50246,44.99648 100.50246,100.50246z" data-paper-data="{&quot;origPos&quot;:null}" id="topboard" fill="#d7d7d7" stroke="#000000" stroke-width="2.22992" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M233.81238,109.8821v41.91066h-41.91066v-41.91066z" data-paper-data="{&quot;origPos&quot;:null}" id="rect4090" fill="#000000" stroke="#000000" stroke-width="1.57483" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M369.9623,187.61245v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="fcLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M228.63086,187.61564v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="fcLED-0" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M87.65174,187.61245v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="rLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M355.41139,236.00387v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="frLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M355.41139,139.22099v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="flLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M325.45366,90.82954v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="fllLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M228.62766,45.33303v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="pLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M325.45366,284.39537v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="rect6364-2" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M166.48654,260.14019c0,0 -3.63121,0 -8.11053,0h-27.98196c-4.47932,0 -8.11053,0 -8.11053,0v-157.55796c0,0 3.63121,0 8.11053,0h27.98196c4.47932,0 8.11053,0 8.11053,0z" data-paper-data="{&quot;origPos&quot;:null}" id="batteryCharge" fill="#ff0000" stroke="#000000" stroke-width="0" stroke-linecap="butt" stroke-linejoin="round"/><path d="M122.28421,110.69232c0,-4.49323 3.61667,-8.10991 8.10991,-8.10991h7.43911c-0.06744,-0.23155 -0.1047,-0.47725 -0.1047,-0.73113v-4.18273c0,-1.43629 1.15639,-2.59269 2.59268,-2.59269h8.12765c1.43629,0 2.59269,1.15639 2.59269,2.59269v4.18273c0,0.25389 -0.03729,0.49957 -0.1047,0.73113h7.43911c4.49324,0 8.10991,3.61667 8.10991,8.10991v141.33777c0,4.49322 -3.61667,8.1099 -8.10991,8.1099h-27.98184c-4.49324,0 -8.10991,-3.61668 -8.10991,-8.1099z" data-paper-data="{&quot;origPos&quot;:null}" id="batteryBody" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M-0.57474,340.39382v-325.83565h475.91589v325.83565z" data-paper-data="{&quot;origPos&quot;:null}" id="rect2429" fill="none" stroke="none" stroke-width="0.09718" stroke-linecap="butt" stroke-linejoin="round"/><g data-paper-data="{&quot;origPos&quot;:null}" id="g4068" fill="none" stroke="#ff0000" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M464.16927,250.961l-66.33007,-17.77309" id="path3286"/><path d="M464.16927,102.73595l-66.33007,17.77309" id="path3984"/></g><g data-paper-data="{&quot;origPos&quot;:null}" id="g4068-0" fill="none" stroke="#009200" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M464.16927,250.961l-66.33007,-17.77309" id="path3286-7"/><path d="M464.16927,102.73595l-66.33007,17.77309" id="path3984-7"/></g><g data-paper-data="{&quot;origPos&quot;:null}" id="g4074" fill="none" stroke="#ff0000" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.36036,250.961l66.33007,-17.77309" id="path4070"/><path d="M74.69042,120.50905l-66.33007,-17.77309" id="path4072"/></g><g data-paper-data="{&quot;origPos&quot;:null}" id="g4074-8" fill="none" stroke="#009200" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.36036,250.961l66.33007,-17.77309" id="path4070-9"/><path d="M74.69042,120.50905l-66.33007,-17.77309" id="path4072-7"/></g></g></g></svg>`;
+        target.runtime.vm.updateSvg(costume.skinId-1, svg, 171, 175);  // I think we can leave rotations null and it'll center...
+    //    target.runtime.emitProjectChanged();
+
+
+    }
+
+//      updateCostume2 (target) {
+//         const svg = `<svg version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" width=\"342\" height=\"350\"><g transform=\"translate(-72.5,-1.5)\"><g data-paper-data=\"{&quot;isPaintingLayer&quot;:true}\" fill=\"none\" fill-rule=\"nonzero\" stroke=\"none\" stroke-width=\"none\" stroke-linecap=\"butt\" stroke-linejoin=\"miter\" stroke-miterlimit=\"10\" stroke-dasharray=\"\" stroke-dashoffset=\"0\" font-family=\"none\" font-weight=\"none\" font-size=\"none\" text-anchor=\"none\" style=\"mix-blend-mode: normal\"><path d=\"M168.40465,333.69176c-28.08428,0 -50.85109,-22.03476 -50.85109,-49.216c0.00905,-4.26797 0.59166,-8.51669 1.73319,-12.6392c-22.23948,-27.84821 -34.33623,-62.29514 -34.33675,-97.77797c0.00051,-35.48283 12.09726,-69.92978 34.33675,-97.77798c-1.14183,-4.14436 -1.719,-8.41542 -1.71684,-12.7046c0,-27.18124 22.76681,-49.216 50.85109,-49.216c10.4173,0.0203 20.57683,3.13665 29.10448,8.92756c15.25362,-4.6537 31.12711,-7.0182 47.0904,-7.01451c88.13588,0 159.58413,70.64299 159.58413,157.78554c0,87.14254 -71.44825,157.78553 -159.58412,157.78553c-15.96412,-0.00161 -31.83763,-2.37162 -47.09039,-7.03086c-8.52567,5.79672 -18.68536,8.91882 -29.10448,8.94391z\" data-paper-data=\"{&quot;origPos&quot;:null}\" id=\"outerbody\" fill=\"#dcdcdc\" stroke=\"#000000\" stroke-width=\"4.71\"/><path d=\"M350.07875,175.15409c0,56.07826 -45.46041,101.53867 -101.53867,101.53867c-56.07826,0 -101.53866,-45.46041 -101.53866,-101.53867c0,-56.07826 45.46041,-101.53867 101.53867,-101.53867c56.07826,0 101.53867,45.46041 101.53867,101.53867z\" data-paper-data=\"{&quot;origPos&quot;:null}\" id=\"topboard\" fill=\"#d7d7d7\" stroke=\"#000000\" stroke-width=\"4.73\"/><path d=\"M248.54008,112.36689v57.88195h-57.88194v-57.88195z\" data-paper-data=\"{&quot;origPos&quot;:null}\" fill=\"#000000\" stroke=\"#000000\" stroke-width=\"4.57\"/><g data-paper-data=\"{&quot;origPos&quot;:null}\" fill=\"#d7d7d7\" stroke=\"#000000\" stroke-width=\"1\"><path d=\"M379.34674,183.3295v-16.35083h16.35083v16.35083z\" id=\"fcLED\"/><path d=\"M94.51524,183.3295v-16.35083h16.35083v16.35083z\" id=\"rLED\"/><path d=\"M364.63099,232.382v-16.35083h16.35084v16.35083z\" id=\"frLED\"/><path d=\"M364.63099,135.91208v-16.35083h16.35084v16.35083z\" id=\"flLED\"/><path d=\"M335.19949,86.20556v-16.35083h16.35083v16.35083z\" id=\"fllLED\"/><path d=\"M237.0945,40.25972v-16.35083h16.35083v16.35084z\" id=\"pLED\"/><path d=\"M335.19949,281.4345v-16.35084h16.35083v16.35084z\"/></g><path d=\"M409.5,173c0,-1.38071 1.11929,-2.5 2.5,-2.5c1.38071,0 2.5,1.11929 2.5,2.5c0,1.38071 -1.11929,2.5 -2.5,2.5c-1.38071,0 -2.5,-1.11929 -2.5,-2.5z\" fill=\"#dcdcdc\" stroke=\"none\" stroke-width=\"0.5\"/><path d=\"M72.5,165c0,-1.38071 1.11929,-2.5 2.5,-2.5c1.38071,0 2.5,1.11929 2.5,2.5c0,1.38071 -1.11929,2.5 -2.5,2.5c-1.38071,0 -2.5,-1.11929 -2.5,-2.5z\" fill=\"#dcdcdc\" stroke=\"none\" stroke-width=\"0.5\"/><path d=\"M255.5,4c0,-1.38071 1.11929,-2.5 2.5,-2.5c1.38071,0 2.5,1.11929 2.5,2.5c0,1.38071 -1.11929,2.5 -2.5,2.5c-1.38071,0 -2.5,-1.11929 -2.5,-2.5z\" fill=\"#dcdcdc\" stroke=\"none\" stroke-width=\"0.5\"/><path d=\"M239.5,349c0,-1.38071 1.11929,-2.5 2.5,-2.5c1.38071,0 2.5,1.11929 2.5,2.5c0,1.38071 -1.11929,2.5 -2.5,2.5c-1.38071,0 -2.5,-1.11929 -2.5,-2.5z\" fill=\"#dcdcdc\" stroke=\"none\" stroke-width=\"0.5\"/></g></g></svg>`;
+//         // Ok....This format; All one line (I guess).  Ugh. 
+//     //    svg = `<svg width="200" height="200" version="1.1"  xmlns="http://www.w3.org/2000/svg"><g transform="translate(-48 -62)"><g transform="matrix(.4 0 0 .4 0 0)"><path id="outerbody" d="m101 260a31 30 0 0 0 18-5 98 96 0 0 0 29 4 98 96 0 0 0 98-96 98 96 0 0 0-98-96 98 96 0 0 0-29 4 31 30 0 0 0-18-5 31 30 0 0 0-31 30 31 30 0 0 0 1 8 98 96 0 0 0-21 60 98 96 0 0 0 21 60 31 30 0 0 0-1 8 31 30 0 0 0 31 30z" style="fill:#dcdcdc;stroke-width:5;stroke:#000"/><circle id="topboard" transform="scale(-1)" cx="-148" cy="-163" r="62" style="fill:#d7d7d7;stroke-width:5;stroke:#000"/><rect transform="scale(-1)" x="-154" y="-160" width="35" height="35" style="stroke-width:5;stroke:#000"/><rect id="fcLED" x="230" y="158" width="10" height="10" style="fill:#d7d7d7;stroke:#000"/><rect id="rLED" x="56" y="158" width="10" height="10" style="fill:#d7d7d7;stroke:#000"/><rect id="frLED" x="221" y="188" width="10" height="10" style="fill:#d7d7d7;stroke:#000"/><rect id="flLED" x="221" y="129" width="10" height="10" style="fill:#d7d7d7;stroke:#000"/><rect id="fllLED" x="203" y="99" width="10" height="10" style="fill:#d7d7d7;stroke:#000"/><rect id="pLED" x="143" y="70" width="10" height="10" style="fill:#d7d7d7;stroke:#000"/><rect x="203" y="218" width="10" height="10" style="fill:#d7d7d7;stroke:#000"/></g></g></svg>`;
+// //        <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="3" height="154"><g transform="translate(-121,-82)"><g data-paper-data="{&quot;isPaintingLayer&quot;:true}" fill="none" fill-rule="nonzero" stroke="#ff0000" stroke-width="2" stroke-linecap="round" stroke-linejoin="miter" stroke-miterlimit="10" stroke-dasharray="" stroke-dashoffset="0" font-family="none" font-weight="none" font-size="none" text-anchor="none" style="mix-blend-mode: normal"><path d="M123,83l-1,152"/></g></g></svg>`;
+
+
+// const svgData = svg.replace(/(\r\n|\n|\r)/gm, '');
+//         console.log(svgData);
+
+//         const costume = target.sprite.costumes_[0];
+  
+//         target.renderer.updateSVGSkin(target.sprite.costumes_[0].skinId, svgData);
+//         costume.size = target.runtime.renderer.getSkinSize(costume.skinId);
+//         const storage = target.runtime.storage;
+//         // If we're in here, we've edited an svg in the vector editor,
+//         // so the dataFormat should be 'svg'
+//         costume.dataFormat = storage.DataFormat.SVG;
+//         costume.bitmapResolution = 1;
+//         costume.asset = storage.createAsset(
+//             storage.AssetType.ImageVector,
+//             costume.dataFormat,
+//             (new TextEncoder()).encode(svg),
+//             null,
+//             true // generate md5
+//         );
+//         costume.assetId = costume.asset.assetId;
+//         costume.md5 = `${costume.assetId}.${costume.dataFormat}`;
+
+//         loadCostumeFromAsset(costume, target.runtime);
+//         target.runtime.emitProjectChanged();
+//     }
+
+
+/*
+        `<svg 
+version=\"1.1\" 
+xmlns=\"http://www.w3.org/2000/svg\" 
+xmlns:xlink=\"http://www.w3.org/1999/xlink\" 
+width=\"480\" height=\"367\">
+<g transform=\"translate(-1,0)\">
+    <g data-paper-data=\"{&quot;isPaintingLayer&quot;:true}\" 
+        fill=\"#ff2525\" 
+        fill-rule=\"nonzero\" 
+        stroke=\"#ff0000\" 
+        stroke-width=\"2\" 
+        stroke-linecap=\"butt\" 
+        stroke-linejoin=\"miter\" 
+        stroke-miterlimit=\"10\" 
+        stroke-dasharray=\"\" 
+        stroke-dashoffset=\"0\" 
+        font-family=\"none\" 
+        font-weight=\"none\" 
+        font-size=\"none\" 
+        text-anchor=\"none\" 
+        style=\"mix-blend-mode: normal\">
+    
+        <circle
+        style="fill:#d7d7d7;fill-opacity:1;stroke:#000000;stroke-width:4.73414;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+        id="topboard"
+        cx="240"
+        cy="180"
+        r="70" />
+        </g>
+    </g>
+</svg>`;
+
+
+
+*/
+
+
+/* 
+
+
         <svg width="300mm" height="300mm" version="1.1" xmlns="http://www.w3.org/2000/svg">
          <g transform="translate(-48 -62.3)" stroke="#000">
           <path id="outerbody" d="m101 260a31.1 30.1 0 0 0 17.8-5.47 97.6 96.5 0 0 0 28.8 4.3 97.6 96.5 0 0 0 97.6-96.5 97.6 96.5 0 0 0-97.6-96.5 97.6 96.5 0 0 0-28.8 4.29 31.1 30.1 0 0 0-17.8-5.46 31.1 30.1 0 0 0-31.1 30.1 31.1 30.1 0 0 0 1.05 7.77 97.6 96.5 0 0 0-21 59.8 97.6 96.5 0 0 0 21 59.8 31.1 30.1 0 0 0-1.06 7.73 31.1 30.1 0 0 0 31.1 30.1z" fill="#dcdcdc" stroke-width="4.71"/>
@@ -872,14 +983,8 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
            <rect x="203" y="218" width="10" height="10"/>
           </g>
          </g>
-        </svg>`;
-        let rotationCenterX = 100;
-        let rotationCenterY = 100;
-                     //);
-        target.renderer.updateSVGSkin(target.sprite.costumes_[0].skinId, svg, [rotationCenterX, rotationCenterY]);    
-    }
-
-
+        </svg>
+*/
     updateCostumeOld (target) {
 
 
@@ -980,6 +1085,8 @@ rotationCenterX: 150
 rotationCenterY: 151.77737426757812
 size: (2) [300, 303.55474853515625]
 */
+
+
             debugger 
 
             // If the costume doesn't exist, add it.  Otherwise replace it
