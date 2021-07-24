@@ -248,6 +248,7 @@ class VirtualMachine extends EventEmitter {
          * @type {!Runtime}
          */
         this.runtime = new Runtime();
+        this.runtime.vm = this; // Add a vm property to the Runtime (this is for dynamic update of costumes...)
         centralDispatch.setService('runtime', this.runtime).catch(e => {
             log.error(`Failed to register runtime service: ${JSON.stringify(e)}`);
         });
