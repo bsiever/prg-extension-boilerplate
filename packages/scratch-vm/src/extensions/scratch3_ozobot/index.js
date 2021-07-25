@@ -10,16 +10,11 @@ const StageLayering = require('../../engine/stage-layering');
 const OzobotWebBle = require('./ozobot-webble.umd.js');
 const OzobotConstants = require('./ozobot-constants.js');
 const { debug } = require('../../util/log');
-const {loadCostumeFromAsset} = require('../../import/load-costume');
 
-
-// GuiReducer has a scratchGui, which has a vm ....Right???
-//import initialState from '../../../../../src/reducers/vm';
-//  Relative path : ../../../../scratch-gui/src/reducers/vm.js
-
-const fileUploader = require('../../../../../src/lib/file-uploader.js');  // Syntax for files in other modules (outside scratch-vm)
+// Example of accessing module in another part of scratch (like VM or GUI)
+// const fileUploader = require('../../../../../src/lib/file-uploader.js');  // Syntax for files in other modules (outside scratch-vm)
 // From an actual path of   ../../../../scratch-gui/src/lib/file-uploader.js 
-//import {costumeUpload} from '../../../../../src/lib/file-uploader.js';
+
 
 
 function debugMessage (msg) {
@@ -30,11 +25,7 @@ function debugMessage (msg) {
     }
 }
 
-//const Runtime = require('../../engine/runtime');
-//const { listenerCount, THREAD_STEP_INTERVAL } = require("../../engine/runtime");
-//const { List } = require("immutable");
-
-// Set debugging of 
+// Set debugging
 OZOBOT_BLE_DEBUG = true;
 
 // All Scratch Events
@@ -122,11 +113,9 @@ Er, actual blocks
         On new color 
         On Ozobot detected
         On new message
-x    
-    
-    
+
     On connect
-    on disconnect 
+    On disconnect 
 
 
 */
@@ -137,21 +126,20 @@ const blockIconURI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAJYAAACWCAYA
 
 const EXTENSION_ID = 'ozobotEvoRobot';
 
-const ConnectionState = {
-    Connected: 1,
-    Disconnected: 2
-};
 
 // Event Tags (for "replies" from Ozobot)
 const MOTION_DONE = 'motion done';
 const AUDIO_DONE = 'audio done';
 
 const LED_NAMES = ['Top', 'Far Left', 'Left', 'Center', 'Right', 'Far Right', 'Power Button', 'Back'];
-class EvoData {
+
+/* Object that represents the remote Evo
+     Manages all interactions 
+*/ 
+class RemoteEvo {
 
     constructor (target, blocks) {
-        this.bot = null;
-        this.state = ConnectionState.Disconnected;
+        this.bot = null;  // Bot object 
         this.ozoblocks = blocks;
         this.target = target;  // Scratch target object for this Evo object
         this.didDisconnectHandler = this.didDisconnect.bind(this);
@@ -161,6 +149,11 @@ class EvoData {
         this.batteryCheck = null;
     }
 
+
+    isConnected() {
+       // return this?.bot?.peripheral?.gatt?.connected ? true : false;
+        return this.bot && this.bot.peripheral && this.bot.peripheral.gatt && this.bot.peripheral.gatt.connected ? true : false;
+    }
 
     /**
      * 
@@ -263,7 +256,6 @@ class EvoData {
             this.bot.subscribeCommand(event, this.didRecieveEvent.bind(this, event));
         }
         this.target.runtime.emit('SAY', this.target, 'think', 'Ready');
-        this.state = ConnectionState.Connected;
     }
 
 
@@ -301,7 +293,6 @@ class EvoData {
         debugMessage('Evo Disconnect');
         this.bot.removeDisconnectListener(this.didDisconnectHandler);
         this.bot = null;
-        this.state = ConnectionState.Disconnected;
         this.ozoblocks.updatePalette();
         this.completeEvents(); // Clear all pending events
 
@@ -384,7 +375,7 @@ TODO: Handle events
         debugMessage(`Target changed: ${this.runtime._editingTarget.sprite.name}`)
         // If the current object doesn't have an Evo, associate a new uninit one 
         if ('evoData' in this.runtime._editingTarget == false) {
-            this.runtime._editingTarget.evoData = new EvoData(this.runtime._editingTarget, this);
+            this.runtime._editingTarget.evoData = new RemoteEvo(this.runtime._editingTarget, this);
             this.runtime.emit("TOOLBOX_EXTENSIONS_NEED_UPDATE");
         }
     }
@@ -449,7 +440,7 @@ TODO: Handle events
                     func: 'CONNECT_OZOBOTEVO',
                     blockType: BlockType.BUTTON,
                     // TODO: Add Ozo name to disconnect string
-                    text: (evoData!==null && evoData.state===ConnectionState.Connected) ? 
+                    text: (evoData!==null && evoData.isConnected()) ? 
                        (evoData && evoData.name ? `Disconnect from ${evoData.name}` : 'Disconnect') :
                        (`Connect ${this.spriteName} to an Evo`)
                 },
@@ -670,7 +661,6 @@ TODO: Handle events
         // Remove the disconnect handler
         this.bot.removeDisconnectListener(this.disconnectHandler);
         this.bot = null; // Frees object...Hopefully garbage collected
-        this.state = ConnectionState.Disconnected;
         this.updatePalette();
     }
     
@@ -697,7 +687,7 @@ TODO: Handle events
 
 
             this.runtime._editingTarget.evoStatusId = this.runtime._editingTarget.runtime.renderer.createDrawable(StageLayering.SPRITE_LAYER);
-            this.runtime._editingTarget.evoSkinId = this.runtime._editingTarget.runtime.renderer.createSVGSkin(this.statusSkinSVG(this.runtime._editingTarget, evoData.state === ConnectionState.Connected, null));
+            this.runtime._editingTarget.evoSkinId = this.runtime._editingTarget.runtime.renderer.createSVGSkin(this.statusSkinSVG(this.runtime._editingTarget, evoData.isConnected(), null));
             this.runtime._editingTarget.runtime.renderer.updateDrawableProperties(this.runtime._editingTarget.evoStatusId, {skinId: this.runtime._editingTarget.evoSkinId});
         }
             /*
@@ -707,7 +697,7 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
      */   
 
         // UI Element call (must use evoData)
-        if(evoData.state === ConnectionState.Disconnected) {
+        if(evoData.isConnected()) {
             debugMessage('Getting BLE device');
             debugMessage(this);
             try {
@@ -731,11 +721,9 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
                     await evoData.bot.device.disconnect();
             }
     
-        } else if (evoData.state === ConnectionState.Connected) {
+        } else if (evoData.isConnected()) {
             // Dis connect
-            if (evoData.bot !== null) {
-                await evoData.bot.device.disconnect();
-            }
+            await evoData.bot.device.disconnect();
         }
     }
 
@@ -743,7 +731,7 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
     checkTargetForEvo(target) {
         // Return null (if invalid) or bot object otherwise
         // TODO:  Check for valid evo data / return if none
-        if ('evoData' in target === false || target.evoData.state !== ConnectionState.Connected)
+        if ('evoData' in target === false || target.evoData.isConnected())
             return null;
         return target.evoData;
     }
