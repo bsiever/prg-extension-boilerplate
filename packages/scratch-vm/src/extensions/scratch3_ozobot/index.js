@@ -10,6 +10,7 @@ const StageLayering = require('../../engine/stage-layering');
 const OzobotWebBle = require('./ozobot-webble.umd.js');
 const OzobotConstants = require('./ozobot-constants.js');
 const { debug } = require('../../util/log');
+const { THREAD_STEP_INTERVAL } = require("../../engine/runtime");
 
 // Example of accessing module in another part of scratch (like VM or GUI)
 // const fileUploader = require('../../../../../src/lib/file-uploader.js');  // Syntax for files in other modules (outside scratch-vm)
@@ -140,19 +141,40 @@ class RemoteEvo {
 
     constructor (target, blocks) {
         this.bot = null;  // Bot object 
+        this.didDisconnectHandler = this.didDisconnect.bind(this);
+
+
+        // The blocks object (for events that may change depiction of blocks)
         this.ozoblocks = blocks;
         this.target = target;  // Scratch target object for this Evo object
-        this.didDisconnectHandler = this.didDisconnect.bind(this);
+
+        this.resetState();
+    }
+
+    resetState () {
+        // Various state data
         this.name = '';
+        // todo:  LED Status
+        this.leds = [];  // Set to 6 empty colors
+        this.distances = []; // Set to 4 distances
+        this.hardware = null;
+        this.firmware = null;
+
         this.pendingOperations = new Map();
         this.audio_playing = false;
         this.batteryCheck = null;
+        this.reconnectCheck = null;   
+    }
+
+    isAssociated () {
+        // return this?.bot?.peripheral?.gatt?.connected ? true : false;
+        return this.bot;
     }
 
 
-    isConnected() {
-       // return this?.bot?.peripheral?.gatt?.connected ? true : false;
-        return this.bot && this.bot.peripheral && this.bot.peripheral.gatt && this.bot.peripheral.gatt.connected ? true : false;
+    isConnected () {
+        // return this?.bot?.peripheral?.gatt?.connected ? true : false;
+        return this.bot && this.bot.peripheral && this.bot.peripheral.gatt && this.bot.peripheral.gatt.connected;
     }
 
     /**
@@ -208,8 +230,22 @@ class RemoteEvo {
         this.pendingOperations.forEach((k, v, m) => v());
     }
 
-    timedPromise(time) {
+    timedPromise (time) {
         return Promise(resolve => setTimeout(resolve, time));
+    }
+
+
+    async isFirmwareVersionSufficient () {
+        this.firmware = await this.bot.firmwareVersion();
+        debugMessage(`Firmware: ${this.firmware}`);
+        const firmwareVal = parseFloat(this.firmware);
+        if (isNaN(firmwareVal) || firmwareVal < 1.17) {
+            debugMessage('Update Firmware!!!!!');
+            this.target.runtime.emit('SAY', this.target, 'say', 'Update Firmware!');
+            setTimeout(this.bot.device.disconnect.bind(this.bot.device), 5000);
+            return false;
+        }
+        return true;
     }
 
     // All the things to do when connected to Evo
@@ -217,24 +253,28 @@ class RemoteEvo {
         // Prepare for disconnects
         this.completeEvents(); // Clear all pending events
         this.bot.addDisconnectListener(this.didDisconnectHandler);
-        await this.bot.stopFile(OzobotConstants.EvoFileTypes.BLOCKLY, true); // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
-        await this.bot.setMovementNotifications(true);
-        await this.bot.playFile(1, '01010010', 0);
-        this.hardware = await this.bot.hardwareVersion();  // Contains .color and .colorName (0 black; 1 white)
-        this.firmware = await this.bot.firmwareVersion();
-        debugMessage(`Hardware Ver: ${this.hardware};  Firmware: ${this.firmware}`);
-        const firmwareVal = parseFloat(this.firmware);
-        if (isNaN(firmwareVal) || firmwareVal < 1.17) {
-            console.error('Update Firmware!');
-            this.target.runtime.emit('SAY', this.target, 'say', 'Update Firmware!');
-            setTimeout(this.bot.device.disconnect.bind(this.bot.device), 5000);
+
+        if (await this.isFirmwareVersionSufficient() !== true) {
             return;
         }
 
+        // Stop OzoBlockly (suppress running behavior) (AKA Silence Wendel!)
+        await this.bot.stopFile(OzobotConstants.EvoFileTypes.BLOCKLY, true);
+
+        // Enable notifications
+        await this.bot.setMovementNotifications(true);
+
+        // Play connection sound
+        await this.bot.playFile(1, '01010010', 0);
+
+        // Contains .color and .colorName (0 black; 1 white)
+        this.hardware = await this.bot.hardwareVersion(); 
+        debugMessage(`Hardware Ver: ${this.hardware}`);
+
         // Battery check / monitor (1x per min)
         this.batteryCheck = setInterval(async () => {
-            const batteryLevel = await this.bot.batteryLevel(); 
-            debugMessage(`Battery: ${batteryLevel}`)
+            const batteryLevel = await this.bot.batteryLevel();
+            debugMessage(`Battery: ${batteryLevel}`);
             if (batteryLevel < 20) {
                 this.target.runtime.emit('SAY', this.target, 'think', 'Low Battery!');
             }
@@ -276,7 +316,7 @@ class RemoteEvo {
             // Check for type (129=UserAudio or 1=Audio, 7=AudioNote, 0=Firmware, 5=AudioSpeex) and running
             // What's 255 == Tone????
             if ([0, 1, 5, 7, 129, 255].includes(data.fileType) && data.running === false) {
-                debugMessage('Audio Done')
+                debugMessage('Audio Done');
                 this.completeEvents(AUDIO_DONE, data);
             }
             break;
@@ -289,19 +329,52 @@ class RemoteEvo {
         this.target.runtime.emit("TOOLBOX_EXTENSIONS_NEED_UPDATE");
     }
 
-    didDisconnect() {
-        debugMessage('Evo Disconnect');
-        this.bot.removeDisconnectListener(this.didDisconnectHandler);
-        this.bot = null;
-        this.ozoblocks.updatePalette();
-        this.completeEvents(); // Clear all pending events
+    tryReconnect () {
+        // Try to reconnect
+        const reconnectHandler = async () => {
+            try {
+                debugMessage('Trying reconnect');
+                await this.bot.device.connect().then(() => {
+                    debugMessage(`Reconnected (I think...)`);
+                    this.setupOnConnection();
+                });
+                debugMessage('Reconnected!');
 
+                clearInterval(this.reconnectCheck);
+            } catch (error) {
+                debugMessage(`Failed to reconnect ${error}`);
+                this.reconnectCheck = setTimeout(reconnectHandler, 1000);
+            }
+        }
+        this.reconnectCheck = setTimeout(reconnectHandler, 1000);
+    }
+
+    didDisconnect () {
+        debugMessage('Evo Disconnect');
+        this.disconnectCleanup();
+        // TODO Redraw icons
         this.target.runtime.emit('SAY', this.target, 'say', 'Disconnected');
-        this.redrawToolbox();
-        clearInterval(this.batteryCheck);
+
+        this.tryReconnect();
         // TODO: Stop the script
         //this.target.runtime.emit('STOP_FOR_TARGET');
 
+    }
+
+    // Common disconnect cleanup independent of cause
+    disconnectCleanup () {
+        this.bot.removeDisconnectListener(this.didDisconnectHandler);
+        this.completeEvents(); // Clear all pending events
+        clearInterval(this.batteryCheck);
+    }
+
+    // Request explicit disconnect
+    async disconnect () {
+        this.disconnectCleanup();
+        await this.bot.device.disconnect();
+        // Delete the bot object now and update toolbox
+        this.bot = null;
+        this.redrawToolbox();
     }
 }
 
@@ -440,7 +513,7 @@ TODO: Handle events
                     func: 'CONNECT_OZOBOTEVO',
                     blockType: BlockType.BUTTON,
                     // TODO: Add Ozo name to disconnect string
-                    text: (evoData!==null && evoData.isConnected()) ? 
+                    text: (evoData!==null && evoData.isAssociated()) ?
                        (evoData && evoData.name ? `Disconnect from ${evoData.name}` : 'Disconnect') :
                        (`Connect ${this.spriteName} to an Evo`)
                 },
@@ -676,28 +749,11 @@ TODO: Handle events
      * UI Function 
      */
     async updateConnection () {
-        let evoData = this.runtime._editingTarget.evoData;
-
-        // If a "status skin" doesn't exist yet, create one
-        if ('evoStatusId' in this.runtime._editingTarget == false) {
-            // Start tracking motion
-            this.runtime._editingTarget.onTargetMoved = this.onTargetMoved.bind(this, this.runtime._editingTarget);
-            this.runtime._editingTarget.removeListener(RenderedTarget.EVENT_TARGET_VISUAL_CHANGE, this.runtime._editingTarget.onTargetMoved);
-            this.runtime._editingTarget.addListener(RenderedTarget.EVENT_TARGET_VISUAL_CHANGE, this.runtime._editingTarget.onTargetMoved);    
-
-
-            this.runtime._editingTarget.evoStatusId = this.runtime._editingTarget.runtime.renderer.createDrawable(StageLayering.SPRITE_LAYER);
-            this.runtime._editingTarget.evoSkinId = this.runtime._editingTarget.runtime.renderer.createSVGSkin(this.statusSkinSVG(this.runtime._editingTarget, evoData.isConnected(), null));
-            this.runtime._editingTarget.runtime.renderer.updateDrawableProperties(this.runtime._editingTarget.evoStatusId, {skinId: this.runtime._editingTarget.evoSkinId});
-        }
-            /*
-skinId = target.runtime.renderer.createSVGSkin('<svg width="50" height="50" xmlns="http://www.w3.org/2000/svg"><circle cx="25" cy="25" r="20"/></svg>')
-
-target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
-     */   
-
-        // UI Element call (must use evoData)
-        if(evoData.isConnected()) {
+        const evoData = this.runtime._editingTarget.evoData;
+        if (evoData.isAssociated()) {
+            // Dis connect
+            await evoData.disconnect();
+        } else {
             debugMessage('Getting BLE device');
             debugMessage(this);
             try {
@@ -708,22 +764,18 @@ target.runtime.renderer.updateDrawableProperties(drawableId, {skinId: skinId});
                 } else {
                     // Connected????
                     debugMessage('Got a bot');
-                    debugMessage(evoData.bot);
                     await evoData.setupOnConnection();
                     debugMessage(`Setup Done: ${evoData.name}`);
                     this.updatePalette();
                 }
         
-            } catch(err) {
+            } catch (err) {
                 debugMessage(err);
                 debugMessage('Error / no connection.');
-                if (evoData.bot)
+                if (evoData.bot) {
                     await evoData.bot.device.disconnect();
+                }
             }
-    
-        } else if (evoData.isConnected()) {
-            // Dis connect
-            await evoData.bot.device.disconnect();
         }
     }
 
