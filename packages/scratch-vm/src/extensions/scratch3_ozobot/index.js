@@ -151,6 +151,28 @@ class RemoteEvo {
         this.resetState();
     }
 
+
+    updateCostume () {
+        //     updateSvg (costumeIndex, svg, rotationCenterX, rotationCenterY) {
+        const costume = this.target.sprite.costumes[0];
+        let outerColor = null;
+        if (this.isConnected()) {
+            if (this.hardware.color === 0) {
+                outerColor = "#dcdcdc";
+            } else {
+                outerColor = "#4c4c4c";
+            }
+        } else {
+            outerColor = "#ffdcdc";
+        }
+
+       // Based on EvaBodyAbove23Plain.svg  (load into editor and then save/export)
+        const svg = `<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="475.91589" height="325.83565"><g transform="translate(0.57474,-14.55817)"><g data-paper-data="{&quot;isPaintingLayer&quot;:true}" fill="none" fill-rule="nonzero" stroke="none" stroke-width="none" stroke-linecap="none" stroke-linejoin="none" stroke-miterlimit="4" stroke-dasharray="" stroke-dashoffset="0" font-family="none" font-weight="none" font-size="none" text-anchor="none" style="mix-blend-mode: normal"><path d="M125.77622,321.29011c-9.42567,-9.13483 -14.72092,-21.52463 -14.72073,-34.44355c0.01071,-4.22191 0.58773,-8.42455 1.71655,-12.50226c-22.02574,-27.5492 -34.00597,-61.63146 -34.00459,-96.73883c0.00888,-35.08382 11.98301,-69.1412 33.98976,-96.67522c-1.12903,-4.09733 -1.7011,-8.32002 -1.70171,-12.56095c-0.00019,-12.91891 5.29505,-25.30872 14.72072,-34.44356c9.42567,-9.13483 22.2096,-14.26634 35.5392,-14.26554c10.31425,0.00788 20.37622,3.0913 28.8203,8.83177c15.08808,-4.60079 30.78914,-6.94023 46.57947,-6.94029c87.23159,0.00123 157.94646,69.86818 157.94769,156.05379c0.00072,41.3887 -16.63975,81.08251 -46.2607,110.3492c-29.62095,29.26669 -69.79597,45.70889 -111.68698,45.70948c-15.78586,-0.00468 -31.48182,-2.3474 -46.56464,-6.95005c-8.44704,5.74674 -18.51474,8.83373 -28.83513,8.84152c-13.3296,0.0008 -26.11352,-5.1307 -35.53919,-14.26553z" data-paper-data="{&quot;origPos&quot;:null}" id="outerbody" fill="${outerColor}" stroke="#000000" stroke-width="2.21675" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M337.22101,179.52796c0,55.50597 -44.99648,100.50246 -100.50246,100.50246c-55.50597,0 -100.50246,-44.99648 -100.50246,-100.50246c0,-55.50597 44.99648,-100.50246 100.50246,-100.50246c55.50597,0 100.50246,44.99648 100.50246,100.50246z" data-paper-data="{&quot;origPos&quot;:null}" id="topboard" fill="#d7d7d7" stroke="#000000" stroke-width="2.22992" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M233.81238,109.8821v41.91066h-41.91066v-41.91066z" data-paper-data="{&quot;origPos&quot;:null}" id="rect4090" fill="#000000" stroke="#000000" stroke-width="1.57483" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M369.9623,187.61245v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="fcLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M228.63086,187.61564v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="fcLED-0" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M87.65174,187.61245v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="rLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M355.41139,236.00387v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="frLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M355.41139,139.22099v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="flLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M325.45366,90.82954v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="fllLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M228.62766,45.33303v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="pLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M325.45366,284.39537v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="rect6364-2" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M166.48654,260.14019c0,0 -3.63121,0 -8.11053,0h-27.98196c-4.47932,0 -8.11053,0 -8.11053,0v-157.55796c0,0 3.63121,0 8.11053,0h27.98196c4.47932,0 8.11053,0 8.11053,0z" data-paper-data="{&quot;origPos&quot;:null}" id="batteryCharge" fill="#ff0000" stroke="#000000" stroke-width="0" stroke-linecap="butt" stroke-linejoin="round"/><path d="M122.28421,110.69232c0,-4.49323 3.61667,-8.10991 8.10991,-8.10991h7.43911c-0.06744,-0.23155 -0.1047,-0.47725 -0.1047,-0.73113v-4.18273c0,-1.43629 1.15639,-2.59269 2.59268,-2.59269h8.12765c1.43629,0 2.59269,1.15639 2.59269,2.59269v4.18273c0,0.25389 -0.03729,0.49957 -0.1047,0.73113h7.43911c4.49324,0 8.10991,3.61667 8.10991,8.10991v141.33777c0,4.49322 -3.61667,8.1099 -8.10991,8.1099h-27.98184c-4.49324,0 -8.10991,-3.61668 -8.10991,-8.1099z" data-paper-data="{&quot;origPos&quot;:null}" id="batteryBody" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M-0.57474,340.39382v-325.83565h475.91589v325.83565z" data-paper-data="{&quot;origPos&quot;:null}" id="rect2429" fill="none" stroke="none" stroke-width="0.09718" stroke-linecap="butt" stroke-linejoin="round"/><g data-paper-data="{&quot;origPos&quot;:null}" id="g4068" fill="none" stroke="#ff0000" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M464.16927,250.961l-66.33007,-17.77309" id="path3286"/><path d="M464.16927,102.73595l-66.33007,17.77309" id="path3984"/></g><g data-paper-data="{&quot;origPos&quot;:null}" id="g4068-0" fill="none" stroke="#009200" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M464.16927,250.961l-66.33007,-17.77309" id="path3286-7"/><path d="M464.16927,102.73595l-66.33007,17.77309" id="path3984-7"/></g><g data-paper-data="{&quot;origPos&quot;:null}" id="g4074" fill="none" stroke="#ff0000" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.36036,250.961l66.33007,-17.77309" id="path4070"/><path d="M74.69042,120.50905l-66.33007,-17.77309" id="path4072"/></g><g data-paper-data="{&quot;origPos&quot;:null}" id="g4074-8" fill="none" stroke="#009200" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.36036,250.961l66.33007,-17.77309" id="path4070-9"/><path d="M74.69042,120.50905l-66.33007,-17.77309" id="path4072-7"/></g></g></g></svg>`;
+        // Seem to have to offset skinId by 1???
+        this.target.runtime.vm.updateSvg(costume.skinId-1, svg, 171, 175);  // I think we can leave rotations null and it'll center...
+
+    }
+
     resetState () {
         // Various state data
         this.name = '';
@@ -296,6 +318,8 @@ class RemoteEvo {
             this.bot.subscribeCommand(event, this.didRecieveEvent.bind(this, event));
         }
         this.target.runtime.emit('SAY', this.target, 'think', 'Ready');
+        // Update the costume / status
+        this.updateCostume();
     }
 
 
@@ -325,28 +349,40 @@ class RemoteEvo {
         this.completeEvents(name, data);
     }
 
-    redrawToolbox() {
+    redrawToolbox () {
         this.target.runtime.emit("TOOLBOX_EXTENSIONS_NEED_UPDATE");
     }
 
-    tryReconnect () {
-        // Try to reconnect
-        const reconnectHandler = async () => {
-            try {
-                debugMessage('Trying reconnect');
-                await this.bot.device.connect().then(() => {
-                    debugMessage(`Reconnected (I think...)`);
-                    this.setupOnConnection();
-                });
-                debugMessage('Reconnected!');
+    async tryReconnect () {
+        debugMessage("Trying Reconnect");
+        //await this.bot.device.peripheral.gatt.connect();
+        // this.bot.device.connect().then(this.setupOnConnection.bind(this)).then(()=>debugMessage('Reconnected!'));
+        await this.bot.device.connect();
+        debugMessage(`Reconnected (I think...)`);
+        await this.setupOnConnection();
 
-                clearInterval(this.reconnectCheck);
-            } catch (error) {
-                debugMessage(`Failed to reconnect ${error}`);
-                this.reconnectCheck = setTimeout(reconnectHandler, 1000);
-            }
-        }
-        this.reconnectCheck = setTimeout(reconnectHandler, 1000);
+
+        // Try to reconnect
+        // const botAtStart = this.bot;
+        // const reconnectHandler = async () => {
+        //     // If the bot object is unchanged from when reconnect was initiated
+        //     if (this.bot === botAtStart) {
+        //         try {
+        //             debugMessage('Trying reconnect');
+
+        //             //await this.bot.device.peripheral.gatt.connect();
+        //             await this.bot.device.connect();
+        //             debugMessage(`Reconnected (I think...)`);
+        //             await this.setupOnConnection();
+        //             debugMessage('Reconnected!');
+        //             // If there was an intentional disconnect while waiting on connection, drop it
+        //             clearInterval(this.reconnectCheck);
+        //         } catch (error) {
+        //             // Didn't reconnect yet.  Try again in 1s
+        //             debugMessage(`Failed to reconnect ${error}`);
+        //         }
+        //     }
+        // };
     }
 
     didDisconnect () {
@@ -354,8 +390,10 @@ class RemoteEvo {
         this.disconnectCleanup();
         // TODO Redraw icons
         this.target.runtime.emit('SAY', this.target, 'say', 'Disconnected');
-
         this.tryReconnect();
+        debugMessage('Disconnect DONE');
+
+        //        this.tryReconnect();
         // TODO: Stop the script
         //this.target.runtime.emit('STOP_FOR_TARGET');
 
@@ -366,12 +404,14 @@ class RemoteEvo {
         this.bot.removeDisconnectListener(this.didDisconnectHandler);
         this.completeEvents(); // Clear all pending events
         clearInterval(this.batteryCheck);
+        this.batteryCheck = null;
+        this.updateCostume();
     }
 
     // Request explicit disconnect
     async disconnect () {
         this.disconnectCleanup();
-        await this.bot.device.disconnect();
+        await this.bot.device.disconnect(); // This will abort any connect attempts
         // Delete the bot object now and update toolbox
         this.bot = null;
         this.redrawToolbox();
@@ -927,6 +967,7 @@ TODO: Handle events
         */
        // Based on EvaBodyAbove23Plain,svg
         const svg = ` <svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="475.91589" height="325.83565"><g transform="translate(0.57474,-14.55817)"><g data-paper-data="{&quot;isPaintingLayer&quot;:true}" fill="none" fill-rule="nonzero" stroke="none" stroke-width="none" stroke-linecap="none" stroke-linejoin="none" stroke-miterlimit="4" stroke-dasharray="" stroke-dashoffset="0" font-family="none" font-weight="none" font-size="none" text-anchor="none" style="mix-blend-mode: normal"><path d="M125.77622,321.29011c-9.42567,-9.13483 -14.72092,-21.52463 -14.72073,-34.44355c0.01071,-4.22191 0.58773,-8.42455 1.71655,-12.50226c-22.02574,-27.5492 -34.00597,-61.63146 -34.00459,-96.73883c0.00888,-35.08382 11.98301,-69.1412 33.98976,-96.67522c-1.12903,-4.09733 -1.7011,-8.32002 -1.70171,-12.56095c-0.00019,-12.91891 5.29505,-25.30872 14.72072,-34.44356c9.42567,-9.13483 22.2096,-14.26634 35.5392,-14.26554c10.31425,0.00788 20.37622,3.0913 28.8203,8.83177c15.08808,-4.60079 30.78914,-6.94023 46.57947,-6.94029c87.23159,0.00123 157.94646,69.86818 157.94769,156.05379c0.00072,41.3887 -16.63975,81.08251 -46.2607,110.3492c-29.62095,29.26669 -69.79597,45.70889 -111.68698,45.70948c-15.78586,-0.00468 -31.48182,-2.3474 -46.56464,-6.95005c-8.44704,5.74674 -18.51474,8.83373 -28.83513,8.84152c-13.3296,0.0008 -26.11352,-5.1307 -35.53919,-14.26553z" data-paper-data="{&quot;origPos&quot;:null}" id="outerbody" fill="#dcdcdc" stroke="#000000" stroke-width="2.21675" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M337.22101,179.52796c0,55.50597 -44.99648,100.50246 -100.50246,100.50246c-55.50597,0 -100.50246,-44.99648 -100.50246,-100.50246c0,-55.50597 44.99648,-100.50246 100.50246,-100.50246c55.50597,0 100.50246,44.99648 100.50246,100.50246z" data-paper-data="{&quot;origPos&quot;:null}" id="topboard" fill="#d7d7d7" stroke="#000000" stroke-width="2.22992" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M233.81238,109.8821v41.91066h-41.91066v-41.91066z" data-paper-data="{&quot;origPos&quot;:null}" id="rect4090" fill="#000000" stroke="#000000" stroke-width="1.57483" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M369.9623,187.61245v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="fcLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M228.63086,187.61564v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="fcLED-0" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M87.65174,187.61245v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="rLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M355.41139,236.00387v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="frLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M355.41139,139.22099v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="flLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M325.45366,90.82954v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="fllLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M228.62766,45.33303v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="pLED" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M325.45366,284.39537v-16.17539h16.17539v16.17539z" data-paper-data="{&quot;origPos&quot;:null}" id="rect6364-2" fill="#d7d7d7" stroke="#000000" stroke-width="0.47103" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M166.48654,260.14019c0,0 -3.63121,0 -8.11053,0h-27.98196c-4.47932,0 -8.11053,0 -8.11053,0v-157.55796c0,0 3.63121,0 8.11053,0h27.98196c4.47932,0 8.11053,0 8.11053,0z" data-paper-data="{&quot;origPos&quot;:null}" id="batteryCharge" fill="#ff0000" stroke="#000000" stroke-width="0" stroke-linecap="butt" stroke-linejoin="round"/><path d="M122.28421,110.69232c0,-4.49323 3.61667,-8.10991 8.10991,-8.10991h7.43911c-0.06744,-0.23155 -0.1047,-0.47725 -0.1047,-0.73113v-4.18273c0,-1.43629 1.15639,-2.59269 2.59268,-2.59269h8.12765c1.43629,0 2.59269,1.15639 2.59269,2.59269v4.18273c0,0.25389 -0.03729,0.49957 -0.1047,0.73113h7.43911c4.49324,0 8.10991,3.61667 8.10991,8.10991v141.33777c0,4.49322 -3.61667,8.1099 -8.10991,8.1099h-27.98184c-4.49324,0 -8.10991,-3.61668 -8.10991,-8.1099z" data-paper-data="{&quot;origPos&quot;:null}" id="batteryBody" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="butt" stroke-linejoin="miter"/><path d="M-0.57474,340.39382v-325.83565h475.91589v325.83565z" data-paper-data="{&quot;origPos&quot;:null}" id="rect2429" fill="none" stroke="none" stroke-width="0.09718" stroke-linecap="butt" stroke-linejoin="round"/><g data-paper-data="{&quot;origPos&quot;:null}" id="g4068" fill="none" stroke="#ff0000" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M464.16927,250.961l-66.33007,-17.77309" id="path3286"/><path d="M464.16927,102.73595l-66.33007,17.77309" id="path3984"/></g><g data-paper-data="{&quot;origPos&quot;:null}" id="g4068-0" fill="none" stroke="#009200" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M464.16927,250.961l-66.33007,-17.77309" id="path3286-7"/><path d="M464.16927,102.73595l-66.33007,17.77309" id="path3984-7"/></g><g data-paper-data="{&quot;origPos&quot;:null}" id="g4074" fill="none" stroke="#ff0000" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.36036,250.961l66.33007,-17.77309" id="path4070"/><path d="M74.69042,120.50905l-66.33007,-17.77309" id="path4072"/></g><g data-paper-data="{&quot;origPos&quot;:null}" id="g4074-8" fill="none" stroke="#009200" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.36036,250.961l66.33007,-17.77309" id="path4070-9"/><path d="M74.69042,120.50905l-66.33007,-17.77309" id="path4072-7"/></g></g></g></svg>`;
+        // Seem to have to offset skinId by 1???
         target.runtime.vm.updateSvg(costume.skinId-1, svg, 171, 175);  // I think we can leave rotations null and it'll center...
     //    target.runtime.emitProjectChanged();
 
