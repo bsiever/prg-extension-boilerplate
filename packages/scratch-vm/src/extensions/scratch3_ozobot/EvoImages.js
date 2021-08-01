@@ -62,21 +62,29 @@ function evoSVG (connected, model, motion, music, batteryVal, lights, sensors, s
    const distLineAngle = 15*3.14159265359/180;
 
    function distDx(len) {
-      let frac = constrain(len/160, 0.05, 1.0);
+      let frac = constrain((160-len)/160, 0.05, 1.0);
       return frac*distLineLength*Math.cos(distLineAngle);
    }
 
    function distDy(len) {
-      let frac = constrain(len/160, 0.05, 1.0);
+      let frac = constrain((160-len)/160, 0.05, 1.0);
       return frac*distLineLength*Math.sin(distLineAngle);
    }
 
-   let distGreen = "#00000000";
-   let distRed = "#00000000";
+   let distGreen = ["#00000000", "#00000000", "#00000000", "#00000000"];
+   let distRed = ["#00000000", "#00000000", "#00000000", "#00000000"];
 
    if(sensors) {
-      distGreen = "#00ff00";
-      distRed = "#ff0000";
+      // Show sensors with high value
+      for(let i=0;i<sensors.length; i++) {
+         if(sensors[i]>10) {
+            distGreen[i] = "#00ff00";
+            distRed[i] = "#ff0000";
+      
+         }
+      }
+   } else {
+      sensors = [160, 160, 160, 160];
    }
 
    let chipColor = "#000000";
@@ -88,14 +96,14 @@ function evoSVG (connected, model, motion, music, batteryVal, lights, sensors, s
     <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="476.10353" height="325.96413">
        <g transform="translate(-1.23761,-16.55817)">
           <g data-paper-data="{&quot;isPaintingLayer&quot;:true}" fill="none" fill-rule="nonzero" stroke="none" stroke-width="none" stroke-linecap="none" stroke-linejoin="none" stroke-miterlimit="none" stroke-dasharray="" stroke-dashoffset="0" font-family="none" font-weight="none" font-size="none" text-anchor="none" style="mix-blend-mode: normal">
-             <path d="M466.16486,253.05421l-66.35622,-17.78009" data-paper-data="{&quot;origPos&quot;:null}" id="rfDistRed" fill="none" stroke="${distRed}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
-             <path d="M466.16486,104.77072l-66.35622,17.7801" data-paper-data="{&quot;origPos&quot;:null}" id="lfDistRed" fill="none" stroke="${distRed}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
-             <path d="M10.17623,253.05421l66.35622,-17.78009" data-paper-data="{&quot;origPos&quot;:null}" id="rbDistRed" fill="none" stroke="${distRed}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
-             <path d="M76.53245,122.55082l-66.35622,-17.7801" data-paper-data="{&quot;origPos&quot;:null}" id="lbDistRed" fill="none" stroke="${distRed}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
-             <path d="M399.80864,235.27412l${distDx(sensors[1])},${distDy(sensors[1])}" data-paper-data="{&quot;origPos&quot;:null}" id="rfDistGreen" fill="none" stroke="${distGreen}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
-             <path d="M399.80864,122.55082l${distDx(sensors[0])},${-distDy(sensors[0])}" data-paper-data="{&quot;origPos&quot;:null}" id="lfDistGreen" fill="none" stroke="${distGreen}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
-             <path d="M76.53245,235.27412l${-distDx(sensors[2])},${distDy(sensors[2])}" data-paper-data="{&quot;origPos&quot;:null}" id="rbDistGreen" fill="none" stroke="${distGreen}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
-             <path d="M76.53245,122.55082l${-distDx(sensors[3])},${-distDy(sensors[3])}" data-paper-data="{&quot;origPos&quot;:null}" id="lbDistGreen" fill="none" stroke="${distGreen}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
+             <path d="M466.16486,253.05421l-66.35622,-17.78009" data-paper-data="{&quot;origPos&quot;:null}" id="rfDistRed" fill="none" stroke="${distRed[1]}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
+             <path d="M466.16486,104.77072l-66.35622,17.7801" data-paper-data="{&quot;origPos&quot;:null}" id="lfDistRed" fill="none" stroke="${distRed[0]}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
+             <path d="M10.17623,253.05421l66.35622,-17.78009" data-paper-data="{&quot;origPos&quot;:null}" id="rbDistRed" fill="none" stroke="${distRed[3]}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
+             <path d="M76.53245,122.55082l-66.35622,-17.7801" data-paper-data="{&quot;origPos&quot;:null}" id="lbDistRed" fill="none" stroke="${distRed[2]}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
+             <path d="M399.80864,235.27412l${distDx(sensors[1])},${distDy(sensors[1])}" data-paper-data="{&quot;origPos&quot;:null}" id="rfDistGreen" fill="none" stroke="${distGreen[1]}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
+             <path d="M399.80864,122.55082l${distDx(sensors[0])},${-distDy(sensors[0])}" data-paper-data="{&quot;origPos&quot;:null}" id="lfDistGreen" fill="none" stroke="${distGreen[0]}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
+             <path d="M76.53245,235.27412l${-distDx(sensors[3])},${distDy(sensors[3])}" data-paper-data="{&quot;origPos&quot;:null}" id="rbDistGreen" fill="none" stroke="${distGreen[3]}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
+             <path d="M76.53245,122.55082l${-distDx(sensors[2])},${-distDy(sensors[2])}" data-paper-data="{&quot;origPos&quot;:null}" id="lbDistGreen" fill="none" stroke="${distGreen[2]}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="4" />
              <path d="M127.6384,323.41105c-9.42939,-9.13843 -14.72672,-21.53312 -14.72653,-34.45713c0.01071,-4.22357 0.58796,-8.42787 1.71722,-12.50719c-22.03443,-27.56007 -34.01938,-61.65576 -34.018,-96.77697c0.00888,-35.09765 11.98774,-69.16846 34.00316,-96.71334c-1.12947,-4.09895 -1.70177,-8.3233 -1.70238,-12.5659c-0.00019,-12.92401 5.29713,-25.3187 14.72653,-34.45714c9.42939,-9.13844 22.21836,-14.27196 35.55321,-14.27116c10.31831,0.00789 20.38426,3.09252 28.83166,8.83525c15.09403,-4.60261 30.80128,-6.94297 46.59784,-6.94303c87.26599,0.00123 158.00873,69.89572 158.00996,156.11532c0.00072,41.40502 -16.64631,81.11448 -46.27894,110.39271c-29.63263,29.27823 -69.82349,45.72691 -111.73102,45.7275c-15.79208,-0.00468 -31.49423,-2.34832 -46.583,-6.95279c-8.45037,5.74901 -18.52204,8.83721 -28.8465,8.84501c-13.33485,0.0008 -26.12382,-5.13272 -35.55321,-14.27115z" data-paper-data="{&quot;origPos&quot;:null}" id="outerbody" fill="${outerBody}" stroke="#000000" stroke-width="2.21675" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="4" />
              <path d="M339.16655,181.59301c0,55.52786 -45.01422,100.54208 -100.54208,100.54208c-55.52786,0 -100.54208,-45.01422 -100.54208,-100.54208c0,-55.52786 45.01422,-100.54208 100.54208,-100.54208c55.52786,0 100.54208,45.01422 100.54208,100.54208z" data-paper-data="{&quot;origPos&quot;:null}" id="topboard" fill="${modelBody}" stroke="#000000" stroke-width="2.22992" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="4" />
              <path d="M235.71715,111.91968v41.92718h-41.92718v-41.92718z" data-paper-data="{&quot;origPos&quot;:null}" id="microchip" fill="${surfColor}" stroke="${surfColor}" stroke-width="1.57483" stroke-linecap="butt" stroke-linejoin="miter" stroke-miterlimit="4" />

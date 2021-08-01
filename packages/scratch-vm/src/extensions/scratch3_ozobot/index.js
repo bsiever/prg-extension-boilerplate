@@ -958,7 +958,7 @@ TODO: Handle events
         // Based on EvaBodyAbove23Plain,svg
 
    // LEDs ['Top', 'Far Left', 'Left', 'Center', 'Right', 'Far Right', 'Power Button', 'Back']
-   const svg = EvoImages.evoSVG(true, 1, false, true, 75, ["#ffffff", "#ff0000", "#ffff00", "#00ff00", "#00ffff", "#0000ff", "#7f0000", "#007f00"], [64, 160, 64, 32], "#ffff00");
+   const svg = EvoImages.evoSVG(true, 1, false, true, 75, ["#ffffff", "#ff0000", "#ffff00", "#00ff00", "#00ffff", "#0000ff", "#7f0000", "#007f00"], [64, 160, 64, 5], "#ffff00");
         // Seem to have to offset skinId by 1???
         if (costume && this.runtime && this.runtime.renderer) {
             costume.rotationCenterX = 171;
