@@ -83,11 +83,59 @@ class RemoteEvo {
 
     updateCostume () {
         // Based on EvaBodyAbove23Plain.svg  (load into editor and then save/export)
-        const svg = EvoImages.evoSVG();
+        // connected, model, motion, music, batteryVal, lights, sensors, surfColor
+        const connected = this.isConnected();
+        const model = this.hardware ? this.hardware.color : null;
+        const motion = this.moving;
+        const music = this.audio_playing;
+        const batteryVal = this.lastBattery;
+        const lights = this.leds;
+        const sensors = this.distances;
+        const surfColor = this.surfColor;
+
+        debugMessage("Updating Costume for Remote Evo")
+        const svg = EvoImages.evoSVG(connected, model, motion, music, batteryVal, lights, sensors, surfColor);
         // Seem to have to offset skinId by 1???
-        const costume = this.target.sprite.costumes[0];
-        // I think skinIds are 1-based and updates to SVGs are 0-based??? Maybe??? 
-        this.target.runtime.vm.updateSvg(costume.skinId-1, svg, 171, 175);  // I think we can leave rotations null and it'll center...
+        const costume = this.target.getCostumes()[0]; // vs. target.sprite.costumes[0]
+
+//        const costume = this.target.sprite.costumes[0];
+        // I think skinIds are 1-based and updates to SVGs are 0-based??? Maybe???
+        this.target.runtime.vm.updateSvg(costume.skinId - 1, svg, 171, 175); // I think we can leave rotations null and it'll center...
+
+        if (costume && this.target.runtime && this.target.runtime.renderer) {
+            costume.rotationCenterX = 171;
+            costume.rotationCenterY = 175;
+            this.target.runtime.renderer.updateSVGSkin(costume.skinId, svg, [171, 175]);
+            costume.size = this.target.runtime.renderer.getSkinSize(costume.skinId);
+        }
+        const storage = this.target.runtime.storage;
+        // If we're in here, we've edited an svg in the vector editor,
+        // so the dataFormat should be 'svg'
+        costume.dataFormat = storage.DataFormat.SVG;
+        costume.bitmapResolution = 1;
+        costume.asset = storage.createAsset(
+            storage.AssetType.ImageVector,
+            costume.dataFormat,
+            (new TextEncoder()).encode(svg),
+            null,
+            true // generate md5
+        );
+        costume.assetId = costume.asset.assetId;
+        costume.md5 = `${costume.assetId}.${costume.dataFormat}`;
+        this.target.runtime.vm.emit('targetsUpdate', {
+            // [[target id, human readable target name], ...].
+            targetList: this.target.runtime.targets
+                .filter(
+                    // Don't report clones.
+                    target => !target.hasOwnProperty('isOriginal') || target.isOriginal
+                ).map(
+                    target => target.toJSON()
+                ),
+            // Currently editing target id.
+            editingTarget: this.target.id
+        });
+
+
     }
 
     resetState () {
@@ -97,6 +145,7 @@ class RemoteEvo {
         this.leds = [];  // Set to 6 empty colors
         this.distances = []; // Set to 4 distances
         this.lastBattery = null;
+        this.surfColor = null;
 
         this.hardware = null; // Hardware version is status indicator
         
@@ -104,6 +153,7 @@ class RemoteEvo {
         this.firmware = null;
 
         this.pendingOperations = new Map();
+        this.moving = false;
         this.audio_playing = false;
         this.batteryCheck = null;
         this.reconnectCheck = null;
@@ -211,7 +261,7 @@ class RemoteEvo {
         await this.bot.playFile(1, '01010010', 0);
 
         // Contains .color and .colorName (0 black; 1 white)
-        this.hardware = await this.bot.hardwareVersion(); 
+        this.hardware = await this.bot.hardwareVersion();
         debugMessage(`Hardware Ver: ${this.hardware}`);
 
         // Battery check / monitor (1x per min)
